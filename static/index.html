@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Flight Wall</title>
+    <style>
+        :root {
+            --bg-color: #050505;
+            --text-color: #ff9d00; /* Amber LED */
+            --border-color: #332000;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            text-transform: uppercase;
+            letter-spacing: 4px;
+            text-shadow: 0 0 10px var(--text-color);
+            margin-bottom: 30px;
+        }
+
+        .board {
+            width: 100%;
+            max-width: 900px;
+            border: 2px solid var(--border-color);
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #0a0a0a;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 2fr 2fr 2fr 1fr;
+            gap: 15px;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 1.4rem;
+            font-weight: bold;
+        }
+
+        .header-row {
+            color: #ffcc66;
+            border-bottom: 2px solid var(--text-color);
+            margin-bottom: 10px;
+        }
+
+        .row:last-child {
+            border-bottom: none;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            font-style: italic;
+        }
+
+        .flash {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .status-bar {
+            margin-top: 20px;
+            font-size: 1rem;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>LOCAL RADAR: <span class="flash">ACTIVE</span></h1>
+
+    <div class="board">
+        <div class="row header-row">
+            <div>CALLSIGN</div>
+            <div>ALT (FT)</div>
+            <div>SPD (KT)</div>
+            <div>HDG</div>
+        </div>
+        <div id="flight-data">
+            <div class="empty-state">SCANNING AIRSPACE...</div>
+        </div>
+    </div>
+
+    <div class="status-bar" id="last-updated">Waiting for connection...</div>
+
+    <script>
+        async function fetchFlights() {
+            try {
+                const response = await fetch('/api/flights');
+                const data = await response.json();
+
+                const container = document.getElementById('flight-data');
+                const timeContainer = document.getElementById('last-updated');
+
+                if (data.flights.length === 0) {
+                    container.innerHTML = '<div class="empty-state">NO AIRCRAFT IN RANGE</div>';
+                } else {
+                    container.innerHTML = '';
+                    const sortedFlights = [...data.flights].sort((a, b) => b.altitude - a.altitude);
+
+                    sortedFlights.forEach(flight => {
+                        const row = document.createElement('div');
+                        row.className = 'row';
+
+                        const alt = flight.altitude.toString().padStart(5, '0');
+                        const spd = flight.speed.toString().padStart(3, '0');
+                        const hdg = flight.heading.toString().padStart(3, '0');
+
+                        row.innerHTML = `
+                            <div>${flight.callsign}</div>
+                            <div>${alt}</div>
+                            <div>${spd}</div>
+                            <div>${hdg}&deg;</div>
+                        `;
+                        container.appendChild(row);
+                    });
+                }
+
+                if (data.timestamp) {
+                    const date = new Date(data.timestamp * 1000);
+                    timeContainer.innerText = `LAST UPDATE: ${date.toLocaleTimeString()}`;
+                } else {
+                    timeContainer.innerText = 'WAITING FOR FIRST UPDATE...';
+                }
+
+            } catch (error) {
+                console.error("Error fetching flights:", error);
+                document.getElementById('flight-data').innerHTML = '<div class="empty-state">CONNECTION ERROR</div>';
+            }
+        }
+
+        fetchFlights();
+        setInterval(fetchFlights, 10000);
+    </script>
+</body>
+</html>
