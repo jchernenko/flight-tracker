@@ -12,9 +12,19 @@ const data: AircraftResponse = {
   aircraft: [],
 };
 
+const info = { feed: 'adsb.lol', place: 'Maple Ridge' };
+
+describe('GET /api/health', () => {
+  it('names the feed and the home point', async () => {
+    const app = createApp({ aircraftService: { get: async () => data }, info });
+    const res = await app.request('/api/health');
+    expect(await res.json()).toEqual({ success: true, data: { ok: true, ...info } });
+  });
+});
+
 describe('GET /api/aircraft', () => {
   it('wraps the picture in the success envelope', async () => {
-    const app = createApp({ aircraftService: { get: async () => data } });
+    const app = createApp({ aircraftService: { get: async () => data }, info });
     const res = await app.request('/api/aircraft');
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ success: true, data });
@@ -27,6 +37,7 @@ describe('GET /api/aircraft', () => {
           throw new AppError(502, 'Flight feed is unavailable');
         },
       },
+      info,
     });
     const res = await app.request('/api/aircraft');
     expect(res.status).toBe(502);
@@ -34,7 +45,7 @@ describe('GET /api/aircraft', () => {
   });
 
   it('returns a JSON 404 for unknown API paths', async () => {
-    const app = createApp({ aircraftService: { get: async () => data } });
+    const app = createApp({ aircraftService: { get: async () => data }, info });
     const res = await app.request('/api/nope');
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ success: false, error: 'Not found' });

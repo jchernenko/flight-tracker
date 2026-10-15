@@ -9,7 +9,7 @@ const plane = { hex: 'abc123', lat: 49, lon: -122 } as Aircraft;
 
 function setup(fetchAircraft: FeedProvider['fetchAircraft']) {
   let clock = 0;
-  const provider = { name: 'test', fetchAircraft: vi.fn(fetchAircraft) };
+  const provider = { name: 'test', label: 'test', fetchAircraft: vi.fn(fetchAircraft) };
   const service = createAircraftService({
     provider,
     routes: noRouteLookup,

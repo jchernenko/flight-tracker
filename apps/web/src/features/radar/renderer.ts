@@ -1,37 +1,44 @@
 import type { Aircraft, LatLon } from '@flight/shared';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
+import { STALE_AFTER_MS } from '../aircraft/status';
+import { alertRgb, altitudeRgb, type Theme } from '../../lib/theme';
 import { deadReckon, offsetNm, positionAgeSec, ringStepNm } from './geometry';
-import { isEmergency, placeTag, tagLines, type Rect } from './tags';
+import { isEmergency, placeTag, tagLines, type Rect, type TagLine } from './tags';
 import { BORDER, LANDMARKS } from './landmarks';
 
-const COLORS = {
-  background: '#050505',
-  ring: '#3a2600',
-  ringOuter: '#5a3c00',
-  ringLabel: '#7a5a20',
-  compass: '#ff9d00',
-  tick: '#7a5a20',
-  blip: '#ffb000',
-  tagPrimary: '#ffcc66',
-  tagSecondary: '#a08350',
-  ground: '#6b5328',
-  alert: '#ff4d4d',
-  sweep: '255, 157, 0',
-  map: '#4a3818',
-  mapLabel: '#6b5328',
+const FRAME_MS = 1000 / 30; // the tablet is slow; 30 fps is plenty for a scope
+const SANS = 'Geist, system-ui, sans-serif';
+const MONO = '"Geist Mono", ui-monospace, monospace';
+const FONTS: Record<TagLine['kind'], string> = {
+  ident: `600 12px ${SANS}`,
+  altitude: `500 11px ${MONO}`,
+  note: `500 11px ${MONO}`,
+};
+const TAG_LINE_H = 15;
+const TAG_GAP = 10;
+/** Comet trails show this much of the track behind each aircraft. */
+const TRAIL_SEC = 160;
+const TRAIL_POINTS = 24;
+const GLOW_RADIUS = 16;
+const HIT_RADIUS = 22;
+const PULSE_MS = 1400;
+const ACQUIRING_ARC_RAD = 0.7;
+const ACQUIRING_SEC_PER_RAD = 0.9;
+
+type TrailPoint = LatLon & { t: number };
+
+/** Everything that only changes with a new picture or theme is computed once, not per frame. */
+type Track = {
+  aircraft: Aircraft;
+  trail: TrailPoint[];
+  lines: TagLine[];
+  tagW: number;
+  emergency: boolean;
+  /** "r,g,b" of its altitude colour, or alert for an emergency. */
+  rgb: string;
 };
 
-const FRAME_MS = 1000 / 30; // the tablet is slow; 30 fps is plenty for a scope
-const SWEEP_PERIOD_MS = 6000;
-const SWEEP_TRAIL_RAD = 0.6;
-const TRAIL_POINTS = 10;
-const PREDICTOR_SEC = 60;
-const FONT = '"Courier New", Courier, monospace';
-/** Past this with no new picture, the contacts are dimmed so a dead feed doesn't look live. */
-const STALE_AFTER_MS = 30_000;
-
-/** Tag text is built once per update, not per frame. */
-type Track = { aircraft: Aircraft; trail: LatLon[]; lines: string[]; maxLen: number };
+type Hit = { hex: string; x: number; y: number };
 
 /**
  * Draws the scope on a canvas with its own animation loop. React hands it data
@@ -42,8 +49,17 @@ export class RadarRenderer {
   private readonly staticLayer = document.createElement('canvas');
   private readonly glowSprites = new Map<string, HTMLCanvasElement>();
   private readonly tracks = new Map<string, Track>();
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private snapshot: AircraftSnapshot | null = null;
+  private theme: Theme;
+  private alertRgb: string;
   private rangeNm: number;
+  private selected: string | null = null;
+  private stale = false;
+  private acquiring = false;
+  /** Positions stop moving once the picture goes stale; this is the age they froze at. */
+  private frozenElapsed: number | null = null;
+  private hits: Hit[] = [];
   private raf = 0;
   private lastFrame = 0;
   private dpr = 1;
@@ -52,17 +68,18 @@ export class RadarRenderer {
   private cx = 0;
   private cy = 0;
   private radiusPx = 0;
-  private fontPx = 12;
-  private charW = 7;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
     rangeNm: number,
+    theme: Theme,
   ) {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D is not supported');
     this.ctx = ctx;
     this.rangeNm = rangeNm;
+    this.theme = theme;
+    this.alertRgb = alertRgb(theme);
     this.resize();
   }
 
@@ -85,6 +102,42 @@ export class RadarRenderer {
     this.buildStaticLayer();
   }
 
+  setTheme(theme: Theme): void {
+    this.theme = theme;
+    this.alertRgb = alertRgb(theme);
+    this.glowSprites.clear();
+    for (const track of this.tracks.values()) track.rgb = this.colorFor(track.aircraft);
+    this.buildStaticLayer();
+  }
+
+  setSelected(hex: string | null): void {
+    this.selected = hex;
+  }
+
+  /** Set by the page when the feed stops answering; the renderer also notices an old picture itself. */
+  setStale(stale: boolean): void {
+    this.stale = stale;
+  }
+
+  /** No picture yet: shows the rotating arc on the outer ring. */
+  setAcquiring(acquiring: boolean): void {
+    this.acquiring = acquiring;
+  }
+
+  /** The aircraft drawn nearest to a point (CSS pixels on the canvas), if one is within reach. */
+  hitTest(x: number, y: number): string | null {
+    let best: Hit | null = null;
+    let bestDist = HIT_RADIUS;
+    for (const hit of this.hits) {
+      const d = Math.hypot(hit.x - x, hit.y - y);
+      if (d <= bestDist) {
+        best = hit;
+        bestDist = d;
+      }
+    }
+    return best?.hex ?? null;
+  }
+
   setSnapshot(next: AircraftSnapshot): void {
     // The API may answer from its cache with the same picture. Keep the first
     // receive time so dead-reckoning doesn't jump backwards.
@@ -93,6 +146,7 @@ export class RadarRenderer {
       this.snapshot?.center.lat !== next.center.lat ||
       this.snapshot?.center.lon !== next.center.lon;
     this.snapshot = next;
+    this.frozenElapsed = null;
     if (centerChanged) this.buildStaticLayer();
 
     const seen = new Set<string>();
@@ -100,15 +154,17 @@ export class RadarRenderer {
       seen.add(a.hex);
       let track = this.tracks.get(a.hex);
       if (!track) {
-        track = { aircraft: a, trail: [], lines: [], maxLen: 0 };
+        track = { aircraft: a, trail: [], lines: [], tagW: 0, emergency: false, rgb: '' };
         this.tracks.set(a.hex, track);
       }
       track.aircraft = a;
+      track.emergency = isEmergency(a);
+      track.rgb = this.colorFor(a);
       track.lines = tagLines(a);
-      track.maxLen = Math.max(...track.lines.map((l) => l.length));
+      track.tagW = this.measureTag(track.lines);
       const last = track.trail[track.trail.length - 1];
       if (!last || last.lat !== a.lat || last.lon !== a.lon) {
-        track.trail.push({ lat: a.lat, lon: a.lon });
+        track.trail.push({ lat: a.lat, lon: a.lon, t: Date.parse(a.seenAt) });
         if (track.trail.length > TRAIL_POINTS) track.trail.shift();
       }
     }
@@ -122,17 +178,27 @@ export class RadarRenderer {
     this.height = Math.max(1, rect.height);
     this.canvas.width = Math.round(this.width * this.dpr);
     this.canvas.height = Math.round(this.height * this.dpr);
-
-    const minDim = Math.min(this.width, this.height);
-    this.fontPx = Math.round(Math.min(18, Math.max(11, minDim / 48)));
-    this.ctx.font = `${this.fontPx}px ${FONT}`;
-    this.charW = this.ctx.measureText('M').width;
     this.cx = this.width / 2;
     this.cy = this.height / 2;
-    this.radiusPx = minDim / 2 - this.fontPx * 2.4;
+    this.radiusPx = Math.max(10, Math.min(this.width, this.height) / 2 - 48);
 
+    // Fonts may have loaded since the tags were measured.
+    for (const track of this.tracks.values()) track.tagW = this.measureTag(track.lines);
     this.glowSprites.clear();
     this.buildStaticLayer();
+  }
+
+  private colorFor(a: Aircraft): string {
+    return isEmergency(a) ? this.alertRgb : altitudeRgb(this.theme, a.altitudeFt);
+  }
+
+  private measureTag(lines: TagLine[]): number {
+    let w = 0;
+    for (const line of lines) {
+      this.ctx.font = FONTS[line.kind];
+      w = Math.max(w, this.ctx.measureText(line.text).width);
+    }
+    return Math.ceil(w);
   }
 
   private get pxPerNm(): number {
@@ -145,84 +211,53 @@ export class RadarRenderer {
     layer.height = this.canvas.height;
     const g = layer.getContext('2d');
     if (!g) return;
-    const { cx, cy, radiusPx, fontPx } = this;
+    const { cx, cy, radiusPx, theme } = this;
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
-    g.fillStyle = COLORS.background;
+    g.fillStyle = theme.bg;
     g.fillRect(0, 0, this.width, this.height);
 
-    // Range rings, labelled along the 045 bearing.
+    // Range rings: dotted inside, a solid outer edge.
     const step = ringStepNm(this.rangeNm);
-    g.font = `${Math.round(fontPx * 0.85)}px ${FONT}`;
-    g.textAlign = 'left';
-    g.textBaseline = 'middle';
     for (let nm = step; nm <= this.rangeNm + 0.001; nm += step) {
-      const r = nm * this.pxPerNm;
       const outer = nm + step > this.rangeNm + 0.001;
-      g.strokeStyle = outer ? COLORS.ringOuter : COLORS.ring;
-      g.lineWidth = outer ? 1.5 : 1;
+      g.strokeStyle = outer ? theme.ringOuter : theme.ring;
+      g.lineWidth = 1;
+      g.setLineDash(outer ? [] : [1, 5]);
       g.beginPath();
-      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.arc(cx, cy, outer ? radiusPx : nm * this.pxPerNm, 0, Math.PI * 2);
       g.stroke();
-      g.fillStyle = COLORS.ringLabel;
-      g.fillText(`${nm}`, cx + r * Math.SQRT1_2 + 3, cy - r * Math.SQRT1_2 - 6);
     }
+    g.setLineDash([]);
 
-    // Compass ticks every 5°, longer every 10° and 30°, bearings every 30°.
-    g.strokeStyle = COLORS.tick;
-    g.lineWidth = 1;
-    g.beginPath();
-    for (let deg = 0; deg < 360; deg += 5) {
-      const len = deg % 30 === 0 ? 12 : deg % 10 === 0 ? 7 : 4;
-      const rad = (deg * Math.PI) / 180;
-      const sin = Math.sin(rad);
-      const cos = Math.cos(rad);
-      g.moveTo(cx + sin * radiusPx, cy - cos * radiusPx);
-      g.lineTo(cx + sin * (radiusPx - len), cy - cos * (radiusPx - len));
-    }
-    g.stroke();
-
-    const cardinal: Record<number, string> = { 0: 'N', 90: 'E', 180: 'S', 270: 'W' };
-    g.font = `bold ${fontPx}px ${FONT}`;
+    g.font = `500 11px ${SANS}`;
+    g.fillStyle = theme.dim;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
-    for (let deg = 0; deg < 360; deg += 30) {
-      const rad = (deg * Math.PI) / 180;
-      const r = radiusPx + fontPx * 1.2;
-      g.fillStyle = cardinal[deg] ? COLORS.compass : COLORS.ringLabel;
-      g.fillText(
-        cardinal[deg] ?? String(deg).padStart(3, '0'),
-        cx + Math.sin(rad) * r,
-        cy - Math.cos(rad) * r,
-      );
-    }
+    const r = radiusPx + 16;
+    g.fillText('N', cx, cy - r);
+    g.fillText('E', cx + r, cy);
+    g.fillText('S', cx, cy + r);
+    g.fillText('W', cx - r, cy);
 
-    this.drawMap(g);
+    this.drawLandmarks(g);
 
-    // Home marker.
-    g.strokeStyle = COLORS.compass;
+    g.strokeStyle = theme.text;
+    g.lineWidth = 1.5;
     g.beginPath();
-    g.moveTo(cx - 7, cy);
-    g.lineTo(cx + 7, cy);
-    g.moveTo(cx, cy - 7);
-    g.lineTo(cx, cy + 7);
+    g.arc(cx, cy, 5, 0, Math.PI * 2);
     g.stroke();
   }
 
-  /** Dim landmarks and the border, drawn into the static layer once per resize, range or center change. */
-  private drawMap(g: CanvasRenderingContext2D): void {
+  /** Faint landmarks and the border, inside the scope only. */
+  private drawLandmarks(g: CanvasRenderingContext2D): void {
     const center = this.snapshot?.center;
     if (!center) return;
-    const { cx, cy, radiusPx, fontPx } = this;
+    const { cx, cy, radiusPx, theme } = this;
     const scale = this.pxPerNm;
-    const toXY = (p: { lat: number; lon: number }) => {
+    const toXY = (p: LatLon) => {
       const o = offsetNm(center, p);
-      return {
-        x: cx + o.eastNm * scale,
-        y: cy - o.northNm * scale,
-        distNm: Math.hypot(o.eastNm, o.northNm),
-        o,
-      };
+      return { x: cx + o.eastNm * scale, y: cy - o.northNm * scale };
     };
 
     g.save();
@@ -230,10 +265,9 @@ export class RadarRenderer {
     g.arc(cx, cy, radiusPx, 0, Math.PI * 2);
     g.clip();
 
-    // Border: dashed, like an ATC video map boundary.
-    g.strokeStyle = COLORS.map;
+    g.strokeStyle = theme.landmark;
     g.lineWidth = 1;
-    g.setLineDash([6, 6]);
+    g.setLineDash([1, 4]);
     g.beginPath();
     BORDER.forEach((p, i) => {
       const { x, y } = toXY(p);
@@ -243,14 +277,14 @@ export class RadarRenderer {
     g.stroke();
     g.setLineDash([]);
 
-    const labelFont = `${Math.round(fontPx * 0.75)}px ${FONT}`;
-    g.font = labelFont;
+    g.font = `10px ${SANS}`;
+    g.textAlign = 'left';
     g.textBaseline = 'middle';
     for (const lm of LANDMARKS) {
-      const { x, y, distNm } = toXY(lm);
-      if (distNm > this.rangeNm) continue;
-      g.strokeStyle = COLORS.map;
-      g.fillStyle = COLORS.map;
+      const { x, y } = toXY(lm);
+      if (Math.hypot(x - cx, y - cy) > radiusPx) continue;
+      g.strokeStyle = theme.landmark;
+      g.fillStyle = theme.landmark;
       g.beginPath();
       if (lm.kind === 'airport') {
         g.arc(x, y, 4, 0, Math.PI * 2);
@@ -266,165 +300,190 @@ export class RadarRenderer {
       } else {
         g.fillRect(x - 1.5, y - 1.5, 3, 3);
       }
-      g.fillStyle = COLORS.mapLabel;
-      g.textAlign = 'left';
+      g.fillStyle = theme.landmarkLabel;
       g.fillText(lm.label, x + 8, y);
     }
     g.restore();
-
-    // Beyond range: a tick and label just inside the outer ring, on the landmark's bearing.
-    g.font = labelFont;
-    g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    for (const lm of LANDMARKS) {
-      const { distNm, o } = toXY(lm);
-      if (!lm.edge || distNm <= this.rangeNm) continue;
-      const sin = o.eastNm / distNm;
-      const cos = o.northNm / distNm;
-      g.strokeStyle = COLORS.map;
-      g.beginPath();
-      g.moveTo(cx + sin * radiusPx, cy - cos * radiusPx);
-      g.lineTo(cx + sin * (radiusPx - 18), cy - cos * (radiusPx - 18));
-      g.stroke();
-      const r = radiusPx - 18 - fontPx;
-      g.fillStyle = COLORS.mapLabel;
-      g.fillText(`${lm.label} ${Math.round(distNm)}`, cx + sin * r, cy - cos * r);
-    }
   }
 
-  /** A soft glow drawn once per color and stamped under each blip (cheaper than shadowBlur). */
-  private glow(color: string): HTMLCanvasElement {
-    let sprite = this.glowSprites.get(color);
+  /** A soft round glow drawn once per colour and stamped under each blip (cheaper than shadowBlur). */
+  private glow(rgb: string): HTMLCanvasElement {
+    let sprite = this.glowSprites.get(rgb);
     if (sprite) return sprite;
-    const size = Math.round(this.fontPx * 2.4 * this.dpr);
+    const size = Math.round(GLOW_RADIUS * 2 * this.dpr);
     sprite = document.createElement('canvas');
     sprite.width = sprite.height = size;
     const g = sprite.getContext('2d')!;
     const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-    grad.addColorStop(0, color);
-    grad.addColorStop(0.25, color + '88');
-    grad.addColorStop(1, color + '00');
+    grad.addColorStop(0, `rgba(${rgb},0.35)`);
+    grad.addColorStop(1, `rgba(${rgb},0)`);
     g.fillStyle = grad;
     g.fillRect(0, 0, size, size);
-    this.glowSprites.set(color, sprite);
+    this.glowSprites.set(rgb, sprite);
     return sprite;
   }
 
   private draw(t: number): void {
-    const { ctx, cx, cy, radiusPx } = this;
+    const { ctx, cx, cy, radiusPx, theme } = this;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.staticLayer, 0, 0);
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const still = this.reducedMotion.matches;
 
-    // Sweep: a bright leading edge fading clockwise-behind.
-    const sweepBearing = ((t % SWEEP_PERIOD_MS) / SWEEP_PERIOD_MS) * Math.PI * 2;
-    const leading = sweepBearing - Math.PI / 2;
-    const grad = ctx.createConicGradient(leading - SWEEP_TRAIL_RAD, cx, cy);
-    const edge = SWEEP_TRAIL_RAD / (Math.PI * 2);
-    grad.addColorStop(0, `rgba(${COLORS.sweep}, 0)`);
-    grad.addColorStop(edge, `rgba(${COLORS.sweep}, 0.2)`);
-    grad.addColorStop(Math.min(1, edge + 0.0005), `rgba(${COLORS.sweep}, 0)`);
-    grad.addColorStop(1, `rgba(${COLORS.sweep}, 0)`);
+    const snapshot = this.snapshot;
+    if (!snapshot) {
+      this.hits = [];
+      if (this.acquiring) {
+        const start = still ? -Math.PI / 2 : t / 1000 / ACQUIRING_SEC_PER_RAD;
+        ctx.globalAlpha = 0.6;
+        ctx.strokeStyle = theme.text;
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.arc(cx, cy, radiusPx, start, start + ACQUIRING_ARC_RAD);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      return;
+    }
+
+    let elapsedMs = t - snapshot.receivedAt;
+    const stale = this.stale || snapshot.stale || elapsedMs > STALE_AFTER_MS;
+    if (stale) this.frozenElapsed ??= Math.min(elapsedMs, STALE_AFTER_MS);
+    // Frozen positions stay put until a new picture arrives (setSnapshot clears
+    // this), so they don't jump ahead when the same cached picture comes back.
+    if (this.frozenElapsed !== null) elapsedMs = this.frozenElapsed;
+
+    const scale = this.pxPerNm;
+    const center = snapshot.center;
+    const nowMs = Date.parse(snapshot.servedAt) + elapsedMs;
+    const drawn: { track: Track; x: number; y: number }[] = [];
+
+    // Trails first, clipped to the scope, so blips and tags sit on top of them.
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, radiusPx, 0, Math.PI * 2);
-    ctx.fillStyle = grad;
-    ctx.fill();
-    ctx.restore();
-
-    const snapshot = this.snapshot;
-    if (!snapshot) return;
-
-    const scale = this.pxPerNm;
-    const elapsedMs = t - snapshot.receivedAt;
-    const center = snapshot.center;
-    const lineH = this.fontPx * 1.15;
-    const placed: Rect[] = [];
-    const flashOn = Math.floor(t / 500) % 2 === 0;
-
-    const fade = elapsedMs > STALE_AFTER_MS ? 0.35 : 1;
-    const fontRegular = `${this.fontPx}px ${FONT}`;
-    const fontBold = `bold ${fontRegular}`;
-
-    for (const { aircraft: a, trail, lines, maxLen } of this.tracks.values()) {
+    ctx.clip();
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const track of this.tracks.values()) {
+      const a = track.aircraft;
       const pos = deadReckon(a, center, positionAgeSec(a, snapshot.servedAt, elapsedMs));
-      if (Math.hypot(pos.eastNm, pos.northNm) > this.rangeNm) continue;
+      // In range by reported position, like the list, so every blip has a row and can be selected.
+      const reported = offsetNm(center, a);
+      if (Math.hypot(reported.eastNm, reported.northNm) > this.rangeNm) continue;
       const x = cx + pos.eastNm * scale;
       const y = cy - pos.northNm * scale;
+      drawn.push({ track, x, y });
+      this.drawTrail(track, x, y, nowMs);
+    }
+    ctx.restore();
 
-      const emergency = isEmergency(a);
-      const color =
-        emergency || a.military ? COLORS.alert : a.onGround ? COLORS.ground : COLORS.blip;
+    this.hits = drawn.map(({ track, x, y }) => ({ hex: track.aircraft.hex, x, y }));
 
-      // Phosphor decay: brightest just after the sweep passes.
-      const bearing = Math.atan2(pos.eastNm, pos.northNm);
-      const since = (((sweepBearing - bearing) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-      const intensity = fade * (0.55 + 0.45 * (1 - since / (Math.PI * 2)) ** 3);
-
-      // History trail: older dots fainter.
-      ctx.fillStyle = color;
-      for (let i = 0; i < trail.length - 1; i++) {
-        const p = trail[i]!;
-        const o = offsetNm(center, p);
-        const ox = cx + o.eastNm * scale;
-        const oy = cy - o.northNm * scale;
-        if (Math.hypot(ox - cx, oy - cy) > radiusPx) continue;
-        ctx.globalAlpha = 0.12 + 0.45 * (i / trail.length);
-        ctx.fillRect(ox - 1.5, oy - 1.5, 3, 3);
-      }
-
-      if (emergency && !flashOn) {
-        ctx.globalAlpha = 1;
-        continue;
-      }
-
-      // Predictor line: where it'll be in a minute.
-      if (!a.onGround && a.groundSpeedKt !== null && a.trackDeg !== null) {
-        const rad = (a.trackDeg * Math.PI) / 180;
-        const len = (a.groundSpeedKt / 3600) * PREDICTOR_SEC * scale;
-        ctx.globalAlpha = 0.6 * intensity;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
+    for (const { track, x, y } of drawn) {
+      const { rgb, emergency } = track;
+      if (emergency) {
+        const phase = still ? 0.3 : (t % PULSE_MS) / PULSE_MS;
+        ctx.globalAlpha = 1 - phase;
+        ctx.strokeStyle = `rgb(${rgb})`;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x + Math.sin(rad) * len, y - Math.cos(rad) * len);
+        ctx.arc(x, y, 8 + 22 * phase, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      if (track.aircraft.military && !emergency) {
+        ctx.strokeStyle = theme.text;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 6);
+        ctx.lineTo(x + 6, y);
+        ctx.lineTo(x, y + 6);
+        ctx.lineTo(x - 6, y);
+        ctx.closePath();
+        ctx.stroke();
+      } else {
+        const sprite = this.glow(rgb);
+        ctx.drawImage(sprite, x - GLOW_RADIUS, y - GLOW_RADIUS, GLOW_RADIUS * 2, GLOW_RADIUS * 2);
+        ctx.fillStyle = `rgb(${rgb})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (track.aircraft.hex === this.selected) {
+        ctx.strokeStyle = theme.text;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 13, 0, Math.PI * 2);
         ctx.stroke();
       }
+    }
 
-      const sprite = this.glow(color);
-      const s = sprite.width / this.dpr;
-      ctx.globalAlpha = intensity;
-      ctx.drawImage(sprite, x - s / 2, y - s / 2, s, s);
-      ctx.globalAlpha = fade;
-      ctx.fillStyle = color;
-      ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
-
-      // Data tag with a leader line to its nearest corner.
-      const w = maxLen * this.charW;
-      const h = lines.length * lineH;
-      const tag = placeTag(x, y, w, h, this.fontPx, placed);
-      const anchorX = tag.x > x ? tag.x : tag.x + tag.w;
-      const anchorY = tag.y > y ? tag.y : tag.y + tag.h;
-      ctx.globalAlpha = 0.7 * fade;
-      ctx.strokeStyle = COLORS.tagSecondary;
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.lineTo(anchorX, anchorY);
-      ctx.stroke();
-      ctx.globalAlpha = fade;
-
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'top';
+    const placed: Rect[] = [];
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    for (const { track, x, y } of drawn) {
+      const { lines, emergency, rgb } = track;
+      const tag = placeTag(x, y, track.tagW, lines.length * TAG_LINE_H, TAG_GAP, placed);
       lines.forEach((line, i) => {
-        ctx.font = i === 0 ? fontBold : fontRegular;
+        ctx.font = FONTS[line.kind];
         ctx.fillStyle = emergency
-          ? COLORS.alert
-          : i === 0
-            ? COLORS.tagPrimary
-            : COLORS.tagSecondary;
-        ctx.fillText(line, tag.x, tag.y + i * lineH);
+          ? `rgb(${rgb})`
+          : line.kind === 'ident'
+            ? theme.text
+            : line.kind === 'altitude'
+              ? `rgb(${rgb})`
+              : theme.muted;
+        ctx.fillText(line.text, tag.x, tag.y + i * TAG_LINE_H + 1);
       });
     }
-    ctx.globalAlpha = 1;
+
+    if (stale) {
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = theme.bg;
+      ctx.fillRect(0, 0, this.width, this.height);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  /**
+   * A comet tail fading out behind the aircraft over the last TRAIL_SEC: through
+   * its reported positions when there are enough, else straight back along its track.
+   */
+  private drawTrail(track: Track, x: number, y: number, nowMs: number): void {
+    const { ctx, cx, cy } = this;
+    const a = track.aircraft;
+    if (a.onGround || a.groundSpeedKt === null || a.groundSpeedKt < 1) return;
+    const scale = this.pxPerNm;
+    const center = this.snapshot!.center;
+
+    const points: { x: number; y: number }[] = [{ x, y }];
+    for (let i = track.trail.length - 1; i >= 0; i--) {
+      const p = track.trail[i]!;
+      if (nowMs - p.t > TRAIL_SEC * 1000) break;
+      const o = offsetNm(center, p);
+      points.push({ x: cx + o.eastNm * scale, y: cy - o.northNm * scale });
+    }
+
+    let tail = points[points.length - 1]!;
+    if (points.length < 4 || Math.hypot(tail.x - x, tail.y - y) < 8) {
+      if (a.trackDeg === null) return;
+      const len = (a.groundSpeedKt / 3600) * TRAIL_SEC * scale;
+      const rad = (a.trackDeg * Math.PI) / 180;
+      tail = { x: x - Math.sin(rad) * len, y: y + Math.cos(rad) * len };
+      points.length = 1;
+      points.push(tail);
+    }
+
+    const grad = ctx.createLinearGradient(x, y, tail.x, tail.y);
+    grad.addColorStop(0, `rgba(${track.rgb},0.9)`);
+    grad.addColorStop(1, `rgba(${track.rgb},0)`);
+    ctx.strokeStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y);
+    ctx.stroke();
   }
 }

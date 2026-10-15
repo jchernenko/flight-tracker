@@ -1,62 +1,133 @@
-/* Dim neutral gray map so the amber aircraft stand out against it. */
 .flight-map {
-  background: var(--color-scope-bg);
+  background: var(--color-bg);
+  font-family: var(--font-sans);
 }
-.flight-map .leaflet-tile-pane {
-  filter: grayscale(1) brightness(0.6) contrast(1.1);
+html[data-theme='dark'] .flight-map .leaflet-tile-pane {
+  filter: grayscale(1) brightness(0.42) contrast(1.25);
+}
+html[data-theme='light'] .flight-map .leaflet-tile-pane {
+  filter: grayscale(1) contrast(1.02) brightness(1.03);
 }
 .flight-map .leaflet-control-attribution {
-  background: rgb(5 5 5 / 0.7);
-  color: var(--color-amber-dim);
+  background: color-mix(in srgb, var(--color-panel) 80%, transparent);
+  color: var(--color-muted);
   font-size: 10px;
-  margin-bottom: 2.5rem;
 }
 .flight-map .leaflet-control-attribution a {
-  color: var(--color-amber-muted);
+  color: var(--color-muted);
 }
 
-.ac {
-  position: relative;
-  font-family: var(--font-mono);
-  color: #ffb000;
-  /* dark outline keeps tags readable over streets and labels */
-  text-shadow:
-    -1px -1px 0 #000,
-    1px -1px 0 #000,
-    -1px 1px 0 #000,
-    1px 1px 0 #000,
-    0 0 4px #000;
-}
-.ac-glyph {
+/*
+ * Aircraft markers. The divIcon is 0×0 at the aircraft's position, and .ac-hit
+ * is a 44px tap target centred on it. --h is the altitude hue, which the
+ * theme's --t-alt-* turn into a colour.
+ */
+.ac-hit {
   position: absolute;
-  left: -7px;
-  top: -9px;
-  width: 14px;
-  text-align: center;
-  font-size: 14px;
-  line-height: 18px;
-  text-shadow:
-    0 0 2px #000,
-    0 0 6px #ff9d00;
+  left: -22px;
+  top: -22px;
+  width: 44px;
+  height: 44px;
+  --c: oklch(var(--t-alt-l) var(--t-alt-c) var(--h));
+  --glow: oklch(var(--t-alt-l) var(--t-alt-c) var(--h) / 0.45);
+}
+.ac-dot {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 10px 2px var(--glow);
+}
+.ac-selected .ac-dot {
+  box-shadow:
+    0 0 0 6px var(--color-sel-ring),
+    0 0 10px 2px var(--glow);
 }
 .ac-label {
   position: absolute;
-  left: 12px;
-  top: -24px;
-  /* pre keeps the fixed-width tag columns ("350   452") */
-  white-space: pre;
-  font-size: 12px;
-  line-height: 1.15;
-  color: #e6b866;
+  left: 34px;
+  top: 0;
+  line-height: 15px;
+  white-space: nowrap;
 }
 .ac-label b {
-  color: #ffcc66;
+  display: block;
+  font: 600 12px var(--font-sans);
+  color: var(--color-text);
 }
-.ac-ground {
-  color: #9c7c44;
+.ac-label span {
+  display: block;
+  font: 400 11px var(--font-mono);
 }
-.ac-alert,
-.ac-alert .ac-label,
-.ac-alert .ac-label b {
-  color: #ff4d4d;
+.ac-altitude {
+  color: var(--c);
+}
+.ac-note {
+  color: var(--color-muted);
+}
+html[data-theme='dark'] .ac-label {
+  text-shadow: 0 1px 3px #0d0e12;
+}
+html[data-theme='light'] .ac-label {
+  text-shadow:
+    0 0 3px #f1efea,
+    0 0 3px #f1efea;
+}
+
+/* Military: a hollow diamond, never red. */
+.ac-mil .ac-dot {
+  left: 17.5px;
+  top: 17.5px;
+  width: 9px;
+  height: 9px;
+  border-radius: 0;
+  background: transparent;
+  border: 1.5px solid var(--color-text);
+  box-shadow: none;
+  transform: rotate(45deg);
+}
+.ac-mil.ac-selected .ac-dot {
+  box-shadow: 0 0 0 6px var(--color-sel-ring);
+}
+
+/* Emergency: alert dot and an expanding ring. */
+.ac-alert .ac-dot {
+  background: var(--color-alert);
+  box-shadow: none;
+}
+.ac-alert .ac-dot::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  margin: -30px 0 0 -30px;
+  border: 1.5px solid var(--color-alert);
+  border-radius: 50%;
+  animation: ac-pulse 1.4s linear infinite;
+}
+.ac-alert .ac-label b,
+.ac-alert .ac-label span {
+  color: var(--color-alert);
+}
+@keyframes ac-pulse {
+  from {
+    transform: scale(0.27);
+    opacity: 1;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ac-alert .ac-dot::after {
+    animation: none;
+    transform: scale(0.45);
+    opacity: 0.8;
+  }
 }

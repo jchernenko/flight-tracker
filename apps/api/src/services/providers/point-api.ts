@@ -3,10 +3,11 @@ import { fetchReadsbJson } from './http.js';
 import { normalizeReadsb } from './readsb-format.js';
 
 /** adsb.lol and airplanes.live share the same "aircraft within N nm of a point" API. */
-export function createPointApiProvider(name: string, baseUrl: string): FeedProvider {
+export function createPointApiProvider(name: string, label: string, baseUrl: string): FeedProvider {
   const base = baseUrl.replace(/\/+$/, '');
   return {
     name,
+    label,
     async fetchAircraft(center, radiusNm) {
       const radius = Math.min(250, Math.ceil(radiusNm));
       const lat = center.lat.toFixed(4);

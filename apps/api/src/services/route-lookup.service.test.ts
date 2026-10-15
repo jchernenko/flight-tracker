@@ -17,7 +17,15 @@ const ADSBDB_ROUTES: Record<string, unknown> = {
     response: {
       flightroute: {
         origin: { iata_code: 'YZF', icao_code: 'CYZF' },
-        destination: { iata_code: 'YVR', icao_code: 'CYVR' },
+        destination: { iata_code: 'YVR', icao_code: 'CYVR', municipality: 'Richmond' },
+      },
+    },
+  },
+  ASA12: {
+    response: {
+      flightroute: {
+        origin: { iata_code: null, icao_code: 'KSEA' },
+        destination: { iata_code: 'XYZ', icao_code: 'PXYZ', municipality: 'Somewhere' },
       },
     },
   },
@@ -45,9 +53,33 @@ describe('route lookup', () => {
     expect(looked).toEqual(['ACA253', 'JZA1', 'WJA9']);
 
     const second = lookup.enrich([ac('ACA253'), ac('WJA9'), ac('JZA1')]);
-    expect(second.map((a) => a.route)).toEqual([{ origin: 'YZF', destination: 'YVR' }, null, null]);
+    expect(second.map((a) => a.route)).toEqual([
+      {
+        origin: 'YZF',
+        destination: 'YVR',
+        originCity: 'Yellowknife',
+        destinationCity: 'Vancouver',
+      },
+      null,
+      null,
+    ]);
     await lookup.idle();
     expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
+
+  it('names cities from the table, then ICAO codes, then adsbdb', async () => {
+    const lookup = createRouteLookup({
+      fetchFn: fakeAdsbdb() as unknown as typeof fetch,
+      now: () => 0,
+    });
+    lookup.enrich([ac('ASA12')]);
+    await lookup.idle();
+    expect(lookup.enrich([ac('ASA12')])[0]?.route).toEqual({
+      origin: 'KSEA',
+      destination: 'XYZ',
+      originCity: 'Seattle',
+      destinationCity: 'Somewhere',
+    });
   });
 
   it('never throws, and backs off after a failure', async () => {

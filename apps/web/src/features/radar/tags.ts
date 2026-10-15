@@ -1,22 +1,25 @@
 import { EMERGENCY_SQUAWKS, type Aircraft } from '@flight/shared';
 
-const VS_THRESHOLD_FPM = 300;
+export type TagLine = { text: string; kind: 'ident' | 'altitude' | 'note' };
 
-/** ATC-style data tag: callsign, then "FL arrow speed", then the route when known. */
-export function tagLines(a: Aircraft): string[] {
+const thousands = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+
+/**
+ * Scope data tag: the callsign, then the altitude ("13,300 ft"). Emergencies
+ * show the squawk instead of the altitude; military traffic gets a note.
+ */
+export function tagLines(a: Aircraft): TagLine[] {
   const ident = a.callsign ?? a.registration ?? a.hex.replace('~', '').toUpperCase();
-  const level = a.onGround
+  const altitude = a.onGround
     ? 'GND'
     : a.altitudeFt === null
-      ? '---'
-      : String(Math.max(0, Math.round(a.altitudeFt / 100))).padStart(3, '0');
-  const vs = a.verticalRateFpm ?? 0;
-  const arrow = vs >= VS_THRESHOLD_FPM ? '↑' : vs <= -VS_THRESHOLD_FPM ? '↓' : ' ';
-  const speed =
-    a.groundSpeedKt === null ? '---' : String(Math.round(a.groundSpeedKt)).padStart(3, '0');
-
-  const lines = [ident, `${level} ${arrow} ${speed}`];
-  if (a.route) lines.push(`${a.route.origin}→${a.route.destination}`);
+      ? '—'
+      : `${thousands.format(a.altitudeFt)} ft`;
+  const lines: TagLine[] = [
+    { text: ident, kind: 'ident' },
+    { text: isEmergency(a) ? `${a.squawk} · EMERGENCY` : altitude, kind: 'altitude' },
+  ];
+  if (a.military) lines.push({ text: 'MILITARY', kind: 'note' });
   return lines;
 }
 

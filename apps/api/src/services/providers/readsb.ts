@@ -7,6 +7,7 @@ import { distanceNm } from '@flight/shared';
 export function createReadsbProvider(url: string): FeedProvider {
   return {
     name: 'readsb',
+    label: 'your receiver',
     async fetchAircraft(center, radiusNm) {
       const payload = await fetchReadsbJson(url, 5_000);
       return normalizeReadsb(payload).filter((a) => distanceNm(center, a) <= radiusNm);

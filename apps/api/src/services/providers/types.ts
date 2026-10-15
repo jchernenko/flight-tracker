@@ -3,6 +3,8 @@ import type { LatLon } from '@flight/shared';
 
 export interface FeedProvider {
   readonly name: string;
+  /** Shown to the viewer, e.g. "adsb.lol". */
+  readonly label: string;
   /** Aircraft with a known position within `radiusNm` of `center`. Throws on upstream failure. */
   fetchAircraft(center: LatLon, radiusNm: number): Promise<Aircraft[]>;
 }

@@ -1,14 +1,28 @@
 @import 'tailwindcss';
 
+/*
+ * Colours come from lib/theme.ts, which writes them to <html> as --t-* variables
+ * (applyTheme), so canvas, Leaflet and CSS share one source. The fallbacks here
+ * are the dark theme, for the first paint.
+ */
 @theme {
-  --color-scope-bg: #050505;
-  --color-amber: #ff9d00;
-  --color-amber-bright: #ffcc66;
-  --color-amber-dim: #7a5a20;
-  --color-amber-muted: #8a7550;
-  --color-amber-border: #332000;
-  --color-alert: #ff4d4d;
-  --font-mono: 'Courier New', Courier, ui-monospace, monospace;
+  --color-bg: var(--t-bg, #0d0e12);
+  --color-panel: var(--t-panel, #14161b);
+  --color-line: var(--t-line, #23262e);
+  --color-line2: var(--t-line2, #1a1c22);
+  --color-text: var(--t-text, #f1f2f4);
+  --color-text2: var(--t-text2, #c6c9cf);
+  --color-muted: var(--t-muted, #9195a0);
+  --color-dim: var(--t-dim, #636874);
+  --color-act-bg: var(--t-actBg, #2a2d36);
+  --color-act-fg: var(--t-actFg, #f1f2f4);
+  --color-in-fg: var(--t-inFg, #9195a0);
+  --color-sel-bg: var(--t-selBg, #1c1f26);
+  --color-sel-ring: var(--t-selRing, rgba(241, 242, 244, 0.22));
+  --color-alert: var(--t-alert, oklch(0.7 0.19 25));
+  --color-alert-t: var(--t-alertT, oklch(0.7 0.19 25 / 0.12));
+  --font-sans: 'Geist', system-ui, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, monospace;
 }
 
 html,
@@ -17,10 +31,27 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--color-scope-bg);
-  color: var(--color-amber);
-  font-family: var(--font-mono);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
   overscroll-behavior: none;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
+}
+
+/* Lists scroll by touch; the scrollbar would only clutter an ambient display. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Altitude legend: amber at the ground to violet at 40,000 ft, in the theme's lightness. */
+.altitude-gradient {
+  background: linear-gradient(
+    90deg in oklch longer hue,
+    oklch(var(--t-alt-l, 0.78) var(--t-alt-c, 0.14) 70),
+    oklch(var(--t-alt-l, 0.78) var(--t-alt-c, 0.14) 290)
+  );
 }

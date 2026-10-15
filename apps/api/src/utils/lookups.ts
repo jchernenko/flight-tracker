@@ -48,3 +48,45 @@ export function isAirlineCallsign(callsign: string | null): callsign is string {
 export function typeName(typeCode: string | null, desc: string | null): string | null {
   return desc ?? (typeCode ? (ICAO_TYPE_NAMES[typeCode] ?? typeCode) : null);
 }
+
+// IATA airport code -> city, for the display's "Calgary → Vancouver" lines.
+// Weighted to routes over the BC coast; adsbdb's municipality fills gaps.
+// prettier-ignore
+const AIRPORT_CITIES: Record<string, string> = {
+  YVR: 'Vancouver', YXX: 'Abbotsford', YYJ: 'Victoria', YCD: 'Nanaimo', YQQ: 'Comox',
+  YLW: 'Kelowna', YKA: 'Kamloops', YYF: 'Penticton', YXC: 'Cranbrook', YCG: 'Castlegar',
+  YXS: 'Prince George', YPR: 'Prince Rupert', YXT: 'Terrace', YZP: 'Sandspit',
+  YWL: 'Williams Lake', YXJ: 'Fort St. John', YDQ: 'Dawson Creek', YZT: 'Port Hardy',
+  YBL: 'Campbell River', YAZ: 'Tofino', YXY: 'Whitehorse', YZF: 'Yellowknife',
+  YYC: 'Calgary', YEG: 'Edmonton', YQU: 'Grande Prairie', YMM: 'Fort McMurray',
+  YQL: 'Lethbridge', YXH: 'Medicine Hat', YXE: 'Saskatoon', YQR: 'Regina',
+  YWG: 'Winnipeg', YQT: 'Thunder Bay', YYZ: 'Toronto', YTZ: 'Toronto', YOW: 'Ottawa',
+  YUL: 'Montréal', YQB: 'Québec City', YHZ: 'Halifax', YYT: "St. John's", YXU: 'London',
+  YHM: 'Hamilton', YQM: 'Moncton', YFC: 'Fredericton',
+  BLI: 'Bellingham', SEA: 'Seattle', BFI: 'Seattle', PAE: 'Everett', GEG: 'Spokane',
+  PDX: 'Portland', BOI: 'Boise', SLC: 'Salt Lake City', SFO: 'San Francisco',
+  OAK: 'Oakland', SJC: 'San Jose', SMF: 'Sacramento', LAX: 'Los Angeles',
+  BUR: 'Burbank', LGB: 'Long Beach', SNA: 'Santa Ana', SAN: 'San Diego',
+  PSP: 'Palm Springs', LAS: 'Las Vegas', PHX: 'Phoenix', DEN: 'Denver', DFW: 'Dallas',
+  IAH: 'Houston', ORD: 'Chicago', MSP: 'Minneapolis', ATL: 'Atlanta', JFK: 'New York',
+  LGA: 'New York', EWR: 'Newark', BOS: 'Boston', IAD: 'Washington', MCO: 'Orlando',
+  MIA: 'Miami', ANC: 'Anchorage', FAI: 'Fairbanks', JNU: 'Juneau', KTN: 'Ketchikan',
+  HNL: 'Honolulu', OGG: 'Kahului', KOA: 'Kona', LIH: 'Lihue',
+  MEX: 'Mexico City', CUN: 'Cancún', PVR: 'Puerto Vallarta', SJD: 'Los Cabos',
+  GDL: 'Guadalajara', LHR: 'London', LGW: 'London', DUB: 'Dublin', KEF: 'Reykjavík',
+  AMS: 'Amsterdam', CDG: 'Paris', FRA: 'Frankfurt', MUC: 'Munich', ZRH: 'Zurich',
+  NRT: 'Tokyo', HND: 'Tokyo', KIX: 'Osaka', ICN: 'Seoul', TPE: 'Taipei',
+  HKG: 'Hong Kong', PEK: 'Beijing', PVG: 'Shanghai', CAN: 'Guangzhou', MNL: 'Manila',
+  SIN: 'Singapore', SYD: 'Sydney', MEL: 'Melbourne', BNE: 'Brisbane', AKL: 'Auckland',
+  DXB: 'Dubai', DOH: 'Doha', DEL: 'Delhi',
+};
+
+/**
+ * City for an airport code. Takes IATA ("YYC") or a Canadian/US ICAO code
+ * ("CYYC", "KSEA"), whose last three letters are usually the IATA code.
+ */
+export function airportCity(code: string): string | null {
+  const upper = code.toUpperCase();
+  const iata = upper.length === 4 && /^[CK]/.test(upper) ? upper.slice(1) : upper;
+  return AIRPORT_CITIES[iata] ?? null;
+}

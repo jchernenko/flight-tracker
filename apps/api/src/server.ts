@@ -19,6 +19,7 @@ const app = createApp({
     radiusNm: env.FETCH_RADIUS_NM,
     ttlMs: env.CACHE_TTL_MS,
   }),
+  info: { feed: provider.label, place: env.HOME_NAME },
 });
 
 // In production the API also serves the built web app, so it's one Railway service.

@@ -13,6 +13,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3000),
   HOME_LAT: requiredNumber(-90, 90),
   HOME_LON: requiredNumber(-180, 180),
+  /** Shown in the display's header, e.g. "Maple Ridge". */
+  HOME_NAME: z.string().trim().min(1).default('Home'),
   FETCH_RADIUS_NM: z.coerce.number().positive().max(250).default(60),
   FEED_PROVIDER: z.enum(['adsblol', 'airplaneslive', 'readsb', 'demo']).default('adsblol'),
   FEED_URL: z.url().optional(),

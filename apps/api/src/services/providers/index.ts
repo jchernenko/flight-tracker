@@ -9,9 +9,13 @@ export type { FeedProvider } from './types.js';
 export function createFeedProvider(env: Pick<Env, 'FEED_PROVIDER' | 'FEED_URL'>): FeedProvider {
   switch (env.FEED_PROVIDER) {
     case 'adsblol':
-      return createPointApiProvider('adsblol', env.FEED_URL ?? 'https://api.adsb.lol');
+      return createPointApiProvider('adsblol', 'adsb.lol', env.FEED_URL ?? 'https://api.adsb.lol');
     case 'airplaneslive':
-      return createPointApiProvider('airplaneslive', env.FEED_URL ?? 'https://api.airplanes.live');
+      return createPointApiProvider(
+        'airplaneslive',
+        'airplanes.live',
+        env.FEED_URL ?? 'https://api.airplanes.live',
+      );
     case 'readsb':
       return createReadsbProvider(env.FEED_URL ?? 'http://localhost:8080/data/aircraft.json');
     case 'demo':

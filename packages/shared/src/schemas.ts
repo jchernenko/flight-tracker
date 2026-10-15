@@ -1,8 +1,12 @@
 import { z } from 'zod';
 
 export const routeSchema = z.object({
+  /** Airport codes, IATA where known ("YVR"), else ICAO ("CYVR"). */
   origin: z.string(),
   destination: z.string(),
+  /** City names for display ("Vancouver"), null when unknown. */
+  originCity: z.string().nullable(),
+  destinationCity: z.string().nullable(),
 });
 
 export const aircraftSchema = z.object({
@@ -41,6 +45,15 @@ export const aircraftResponseSchema = z.object({
   aircraft: z.array(aircraftSchema),
 });
 
+export const healthSchema = z.object({
+  ok: z.literal(true),
+  /** Display name of the flight feed, e.g. "adsb.lol". */
+  feed: z.string(),
+  /** Display name of the home point, e.g. "Maple Ridge". */
+  place: z.string(),
+});
+
 export type Route = z.infer<typeof routeSchema>;
+export type Health = z.infer<typeof healthSchema>;
 export type Aircraft = z.infer<typeof aircraftSchema>;
 export type AircraftResponse = z.infer<typeof aircraftResponseSchema>;

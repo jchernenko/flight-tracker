@@ -12,28 +12,25 @@ const base = {
   groundSpeedKt: 452,
   route: null,
   squawk: '2341',
+  military: false,
 } as Aircraft;
 
 describe('tagLines', () => {
-  it('formats callsign, flight level, trend and speed', () => {
-    expect(tagLines(base)).toEqual(['ACA123', '350 ↑ 452']);
+  const texts = (a: Aircraft) => tagLines(a).map((l) => l.text);
+
+  it('shows the callsign and the altitude with a thousands separator', () => {
+    expect(texts(base)).toEqual(['ACA123', '35,000 ft']);
+    expect(texts({ ...base, onGround: true, altitudeFt: null })[1]).toBe('GND');
   });
 
-  it('adds the route and handles descending, level and ground traffic', () => {
-    expect(
-      tagLines({ ...base, verticalRateFpm: -800, route: { origin: 'YVR', destination: 'YYZ' } }),
-    ).toEqual(['ACA123', '350 ↓ 452', 'YVR→YYZ']);
-    expect(tagLines({ ...base, verticalRateFpm: 0, altitudeFt: 2500, groundSpeedKt: 95 })[1]).toBe(
-      '025   095',
-    );
-    expect(tagLines({ ...base, onGround: true, altitudeFt: null, verticalRateFpm: null })[1]).toBe(
-      'GND   452',
-    );
+  it('shows the squawk for emergencies and a note for military traffic', () => {
+    expect(texts({ ...base, squawk: '7700' })).toEqual(['ACA123', '7700 · EMERGENCY']);
+    expect(texts({ ...base, military: true })).toEqual(['ACA123', '35,000 ft', 'MILITARY']);
   });
 
   it('falls back to registration, then hex', () => {
-    expect(tagLines({ ...base, callsign: null, registration: 'C-GKLM' })[0]).toBe('C-GKLM');
-    expect(tagLines({ ...base, callsign: null })[0]).toBe('C0FFEE');
+    expect(texts({ ...base, callsign: null, registration: 'C-GKLM' })[0]).toBe('C-GKLM');
+    expect(texts({ ...base, callsign: null })[0]).toBe('C0FFEE');
   });
 });
 

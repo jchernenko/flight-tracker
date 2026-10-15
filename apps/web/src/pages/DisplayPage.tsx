@@ -1,12 +1,21 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import { DEFAULT_RANGE_NM, RANGES_NM, type RangeNm } from '@flight/shared';
-import { StatusOverlay, VIEWS, type View } from '../components/StatusOverlay';
-import { useAircraft, type AircraftSnapshot } from '../features/aircraft/useAircraft';
+import { VIEWS, type View } from '../components/Controls';
+import { nextRange } from '../components/Headline';
+import { AltitudeLegend, ScopeBanners, ScopeMessage } from '../components/ScopeOverlays';
+import { SidePanel } from '../components/SidePanel';
+import { useAircraft } from '../features/aircraft/useAircraft';
+import { useFeedInfo } from '../features/aircraft/useFeedInfo';
 import { aircraftInRange } from '../features/aircraft/inRange';
+import { clockText, sortForList } from '../features/aircraft/format';
+import { statusFor } from '../features/aircraft/status';
 import { FlightBoard } from '../features/board/FlightBoard';
 import { RadarScope } from '../features/radar/RadarScope';
+import { isEmergency } from '../features/radar/tags';
+import { useNow } from '../hooks/useNow';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useWakeLock } from '../hooks/useWakeLock';
+import { applyTheme, THEME_NAMES, THEMES, type ThemeName } from '../lib/theme';
 
 // Leaflet only loads when the map view is opened, keeping the radar bundle small.
 const FlightMap = lazy(() =>
@@ -15,75 +24,105 @@ const FlightMap = lazy(() =>
 
 const parseRange = (raw: string) => RANGES_NM.find((r) => String(r) === raw) ?? null;
 const parseView = (raw: string): View | null => VIEWS.find((v) => v === raw) ?? null;
-
-function statusFor(
-  data: AircraftSnapshot | undefined,
-  isPending: boolean,
-  isError: boolean,
-): { label: string; tone: 'ok' | 'warn' | 'alert' } {
-  if (isPending) return { label: 'Acquiring…', tone: 'warn' };
-  if (!data) return { label: 'Feed offline · retrying', tone: 'alert' };
-  const time = new Date(data.fetchedAt).toLocaleTimeString([], { hour12: false });
-  if (isError || data.stale) return { label: `Stale · ${time}`, tone: 'alert' };
-  return { label: `Upd ${time}`, tone: 'ok' };
-}
+const parseTheme = (raw: string): ThemeName | null => THEME_NAMES.find((t) => t === raw) ?? null;
 
 export function DisplayPage() {
   useWakeLock();
+  const now = useNow();
   const [rangeNm, setRangeNm] = usePersistentState<RangeNm>(
     'range-nm',
     DEFAULT_RANGE_NM,
     parseRange,
   );
   const [view, setView] = usePersistentState<View>('view', 'radar', parseView);
-  const { data, isPending, isError } = useAircraft();
+  const [themeName, setThemeName] = usePersistentState<ThemeName>('theme', 'dark', parseTheme);
+  const [selectedHex, setSelectedHex] = useState<string | null>(null);
+  const { data, isPending, isError, refetch } = useAircraft();
+  const info = useFeedInfo();
 
-  const inRange = data ? aircraftInRange(data, rangeNm) : [];
-  const cycleRange = () => {
-    const next = RANGES_NM[(RANGES_NM.indexOf(rangeNm) + 1) % RANGES_NM.length]!;
-    setRangeNm(next);
+  const theme = THEMES[themeName];
+  useLayoutEffect(() => applyTheme(theme), [theme]);
+
+  const status = statusFor(data, isPending, isError);
+  const inRange = data ? sortForList(aircraftInRange(data, rangeNm)) : null;
+  const emergencies = inRange?.filter(isEmergency) ?? [];
+  const cycleRange = () => setRangeNm(nextRange(rangeNm));
+
+  // Only aircraft in range can be selected; drop the selection when it leaves.
+  const selectable = (hex: string | null) =>
+    hex === null || (inRange?.some((a) => a.hex === hex) ?? false);
+  const selected = selectable(selectedHex) ? selectedHex : null;
+  useEffect(() => {
+    if (selectedHex !== selected) setSelectedHex(selected);
+  }, [selectedHex, selected]);
+  const select = (hex: string | null) => setSelectedHex(selectable(hex) ? hex : null);
+
+  const shared = {
+    view,
+    onSelectView: setView,
+    theme: themeName,
+    onSelectTheme: setThemeName,
+    rangeNm,
+    onCycleRange: cycleRange,
+    status,
+    feed: info?.feed,
+    place: info?.place,
+    aircraft: inRange,
   };
+
+  if (view === 'board') {
+    return (
+      <main className="relative h-full w-full">
+        <FlightBoard {...shared} clock={clockText(now)} onRetry={() => void refetch()} />
+      </main>
+    );
+  }
+
+  const stale = status.kind === 'stale';
+  const scopeMessage =
+    status.kind === 'acquiring'
+      ? 'Acquiring feed…'
+      : inRange && inRange.length === 0
+        ? `No aircraft within ${rangeNm} nm`
+        : null;
 
   return (
     <main className="relative h-full w-full">
-      {view === 'radar' && (
-        <>
-          <RadarScope snapshot={data} rangeNm={rangeNm} />
-          {data && inRange.length === 0 && (
-            <p className="pointer-events-none absolute inset-x-0 bottom-16 text-center text-sm tracking-widest text-amber-dim">
-              NO TRAFFIC WITHIN {rangeNm} NM
-            </p>
-          )}
-        </>
-      )}
-      {view === 'map' &&
-        (data ? (
-          <Suspense fallback={<p className="py-32 text-center text-amber-muted">LOADING MAP…</p>}>
-            <FlightMap snapshot={data} rangeNm={rangeNm} />
-          </Suspense>
+      <section className="absolute inset-y-0 left-0 right-[400px] overflow-hidden">
+        {view === 'radar' ? (
+          <RadarScope
+            snapshot={data}
+            rangeNm={rangeNm}
+            theme={theme}
+            selectedHex={selected}
+            stale={stale}
+            acquiring={status.kind === 'acquiring'}
+            onSelect={select}
+          />
         ) : (
-          <p className="py-32 text-center text-amber-muted italic">
-            {isPending ? 'SCANNING AIRSPACE…' : 'CONNECTION ERROR'}
-          </p>
-        ))}
-      {view === 'board' && (
-        <div className="h-full overflow-y-auto px-4 pt-16 pb-12">
-          {data ? (
-            <FlightBoard aircraft={inRange} />
-          ) : (
-            <p className="py-16 text-center text-amber-muted italic">
-              {isPending ? 'SCANNING AIRSPACE…' : 'CONNECTION ERROR'}
-            </p>
-          )}
-        </div>
-      )}
-      <StatusOverlay
-        rangeNm={rangeNm}
-        onCycleRange={cycleRange}
-        view={view}
-        onSelectView={setView}
-        count={data ? inRange.length : null}
-        status={statusFor(data, isPending, isError)}
+          data && (
+            <Suspense fallback={null}>
+              <FlightMap
+                snapshot={data}
+                rangeNm={rangeNm}
+                theme={theme}
+                selectedHex={selected}
+                stale={stale}
+                onSelect={select}
+              />
+            </Suspense>
+          )
+        )}
+        {scopeMessage && <ScopeMessage>{scopeMessage}</ScopeMessage>}
+        <ScopeBanners status={status} emergencies={emergencies} feed={info?.feed} />
+        <AltitudeLegend />
+      </section>
+      <SidePanel
+        {...shared}
+        clock={clockText(now)}
+        home={data?.center}
+        selectedHex={selected}
+        onSelect={select}
       />
     </main>
   );

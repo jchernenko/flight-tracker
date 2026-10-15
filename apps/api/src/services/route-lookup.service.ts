@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Aircraft, Route } from '@flight/shared';
-import { isAirlineCallsign } from '../utils/lookups.js';
+import { airportCity, isAirlineCallsign } from '../utils/lookups.js';
 import { USER_AGENT } from './providers/http.js';
 
 // ADS-B carries no flight plan, so origin/destination come from adsbdb's
@@ -16,6 +16,7 @@ const MAX_CACHE_ENTRIES = 5000;
 const airportSchema = z.object({
   iata_code: z.string().nullish(),
   icao_code: z.string().nullish(),
+  municipality: z.string().nullish(),
 });
 
 const callsignResponseSchema = z.object({
@@ -75,7 +76,16 @@ export function createRouteLookup(
       const { origin, destination } = body.response.flightroute;
       const from = origin.iata_code || origin.icao_code;
       const to = destination.iata_code || destination.icao_code;
-      remember(callsign, from && to ? { origin: from, destination: to } : null, ROUTE_TTL_MS);
+      const route: Route | null =
+        from && to
+          ? {
+              origin: from,
+              destination: to,
+              originCity: airportCity(from) ?? origin.municipality ?? null,
+              destinationCity: airportCity(to) ?? destination.municipality ?? null,
+            }
+          : null;
+      remember(callsign, route, ROUTE_TTL_MS);
     } catch (err) {
       console.warn(
         `Route lookup for ${callsign} failed:`,
