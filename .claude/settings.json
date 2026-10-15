@@ -1,0 +1,41 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "Bash(npx drizzle-kit generate *)",
+      "Bash(npx shadcn@latest add *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
+    ],
+    "ask": [
+      "Bash(npx drizzle-kit migrate *)",
+      "Bash(npx drizzle-kit push *)",
+      "Bash(git push *)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/.env)",
+      "Bash(git push --force *)",
+      "Bash(rm -rf *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in *.ts|*.tsx|*.js|*.jsx|*.json|*.css|*.md) [ -x node_modules/.bin/prettier ] && node_modules/.bin/prettier --write \"$f\" >/dev/null 2>&1 ;; esac; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+node_modules
+dist
+package-lock.json
+# Copied from the starter template; kept byte-identical.
+.claude
+CLAUDE.md
+SPEC.md
