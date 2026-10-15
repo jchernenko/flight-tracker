@@ -1,5 +1,6 @@
+import { lazy, Suspense } from 'react';
 import { DEFAULT_RANGE_NM, RANGES_NM, type RangeNm } from '@flight/shared';
-import { StatusOverlay } from '../components/StatusOverlay';
+import { StatusOverlay, VIEWS, type View } from '../components/StatusOverlay';
 import { useAircraft, type AircraftSnapshot } from '../features/aircraft/useAircraft';
 import { aircraftInRange } from '../features/aircraft/inRange';
 import { FlightBoard } from '../features/board/FlightBoard';
@@ -7,10 +8,13 @@ import { RadarScope } from '../features/radar/RadarScope';
 import { usePersistentState } from '../hooks/usePersistentState';
 import { useWakeLock } from '../hooks/useWakeLock';
 
-type View = 'radar' | 'board';
+// Leaflet only loads when the map view is opened, keeping the radar bundle small.
+const FlightMap = lazy(() =>
+  import('../features/map/FlightMap').then((m) => ({ default: m.FlightMap })),
+);
 
 const parseRange = (raw: string) => RANGES_NM.find((r) => String(r) === raw) ?? null;
-const parseView = (raw: string): View | null => (raw === 'radar' || raw === 'board' ? raw : null);
+const parseView = (raw: string): View | null => VIEWS.find((v) => v === raw) ?? null;
 
 function statusFor(
   data: AircraftSnapshot | undefined,
@@ -42,7 +46,7 @@ export function DisplayPage() {
 
   return (
     <main className="relative h-full w-full">
-      {view === 'radar' ? (
+      {view === 'radar' && (
         <>
           <RadarScope snapshot={data} rangeNm={rangeNm} />
           {data && inRange.length === 0 && (
@@ -51,7 +55,18 @@ export function DisplayPage() {
             </p>
           )}
         </>
-      ) : (
+      )}
+      {view === 'map' &&
+        (data ? (
+          <Suspense fallback={<p className="py-32 text-center text-amber-muted">LOADING MAP…</p>}>
+            <FlightMap snapshot={data} rangeNm={rangeNm} />
+          </Suspense>
+        ) : (
+          <p className="py-32 text-center text-amber-muted italic">
+            {isPending ? 'SCANNING AIRSPACE…' : 'CONNECTION ERROR'}
+          </p>
+        ))}
+      {view === 'board' && (
         <div className="h-full overflow-y-auto px-4 pt-16 pb-12">
           {data ? (
             <FlightBoard aircraft={inRange} />
@@ -66,7 +81,7 @@ export function DisplayPage() {
         rangeNm={rangeNm}
         onCycleRange={cycleRange}
         view={view}
-        onToggleView={() => setView(view === 'radar' ? 'board' : 'radar')}
+        onSelectView={setView}
         count={data ? inRange.length : null}
         status={statusFor(data, isPending, isError)}
       />

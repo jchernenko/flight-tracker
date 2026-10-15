@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Aircraft } from '@flight/shared';
-import { deadReckon, offsetNm, positionAgeSec, ringStepNm } from './geometry';
+import { deadReckon, offsetNm, positionAgeSec, ringStepNm, toLatLon } from './geometry';
 
 const center = { lat: 49.2, lon: -122.6 };
 const plane = (over: Partial<Aircraft>) =>
@@ -39,5 +39,12 @@ describe('geometry', () => {
 
   it('picks ring spacing per range', () => {
     expect([10, 20, 30, 60].map(ringStepNm)).toEqual([5, 5, 10, 20]);
+  });
+
+  it('round-trips offsets back to lat/lon', () => {
+    const p = { lat: 49.4, lon: -122.3 };
+    const back = toLatLon(center, offsetNm(center, p));
+    expect(back.lat).toBeCloseTo(p.lat, 9);
+    expect(back.lon).toBeCloseTo(p.lon, 9);
   });
 });

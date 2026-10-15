@@ -50,3 +50,12 @@ export function ringStepNm(rangeNm: number): number {
   if (rangeNm <= 30) return 10;
   return 20;
 }
+
+/** Inverse of offsetNm: the lat/lon at an east/north offset from the home point. */
+export function toLatLon(center: LatLon, o: Offset): LatLon {
+  const cosLat = Math.cos((center.lat * Math.PI) / 180);
+  return {
+    lat: center.lat + o.northNm / NM_PER_DEG_LAT,
+    lon: center.lon + o.eastNm / (NM_PER_DEG_LAT * cosLat),
+  };
+}
