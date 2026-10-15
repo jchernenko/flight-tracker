@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-scope-bg: #050505;
+  --color-amber: #ff9d00;
+  --color-amber-bright: #ffcc66;
+  --color-amber-dim: #7a5a20;
+  --color-amber-muted: #8a7550;
+  --color-amber-border: #332000;
+  --color-alert: #ff4d4d;
+  --font-mono: 'Courier New', Courier, ui-monospace, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-scope-bg);
+  color: var(--color-amber);
+  font-family: var(--font-mono);
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}

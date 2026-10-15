@@ -1,0 +1,75 @@
+import { DEFAULT_RANGE_NM, RANGES_NM, type RangeNm } from '@flight/shared';
+import { StatusOverlay } from '../components/StatusOverlay';
+import { useAircraft, type AircraftSnapshot } from '../features/aircraft/useAircraft';
+import { aircraftInRange } from '../features/aircraft/inRange';
+import { FlightBoard } from '../features/board/FlightBoard';
+import { RadarScope } from '../features/radar/RadarScope';
+import { usePersistentState } from '../hooks/usePersistentState';
+import { useWakeLock } from '../hooks/useWakeLock';
+
+type View = 'radar' | 'board';
+
+const parseRange = (raw: string) => RANGES_NM.find((r) => String(r) === raw) ?? null;
+const parseView = (raw: string): View | null => (raw === 'radar' || raw === 'board' ? raw : null);
+
+function statusFor(
+  data: AircraftSnapshot | undefined,
+  isPending: boolean,
+  isError: boolean,
+): { label: string; tone: 'ok' | 'warn' | 'alert' } {
+  if (isPending) return { label: 'Acquiring…', tone: 'warn' };
+  if (!data) return { label: 'Feed offline · retrying', tone: 'alert' };
+  const time = new Date(data.fetchedAt).toLocaleTimeString([], { hour12: false });
+  if (isError || data.stale) return { label: `Stale · ${time}`, tone: 'alert' };
+  return { label: `Upd ${time}`, tone: 'ok' };
+}
+
+export function DisplayPage() {
+  useWakeLock();
+  const [rangeNm, setRangeNm] = usePersistentState<RangeNm>(
+    'range-nm',
+    DEFAULT_RANGE_NM,
+    parseRange,
+  );
+  const [view, setView] = usePersistentState<View>('view', 'radar', parseView);
+  const { data, isPending, isError } = useAircraft();
+
+  const inRange = data ? aircraftInRange(data, rangeNm) : [];
+  const cycleRange = () => {
+    const next = RANGES_NM[(RANGES_NM.indexOf(rangeNm) + 1) % RANGES_NM.length]!;
+    setRangeNm(next);
+  };
+
+  return (
+    <main className="relative h-full w-full">
+      {view === 'radar' ? (
+        <>
+          <RadarScope snapshot={data} rangeNm={rangeNm} />
+          {data && inRange.length === 0 && (
+            <p className="pointer-events-none absolute inset-x-0 bottom-16 text-center text-sm tracking-widest text-amber-dim">
+              NO TRAFFIC WITHIN {rangeNm} NM
+            </p>
+          )}
+        </>
+      ) : (
+        <div className="h-full overflow-y-auto px-4 pt-16 pb-12">
+          {data ? (
+            <FlightBoard aircraft={inRange} />
+          ) : (
+            <p className="py-16 text-center text-amber-muted italic">
+              {isPending ? 'SCANNING AIRSPACE…' : 'CONNECTION ERROR'}
+            </p>
+          )}
+        </div>
+      )}
+      <StatusOverlay
+        rangeNm={rangeNm}
+        onCycleRange={cycleRange}
+        view={view}
+        onToggleView={() => setView(view === 'radar' ? 'board' : 'radar')}
+        count={data ? inRange.length : null}
+        status={statusFor(data, isPending, isError)}
+      />
+    </main>
+  );
+}
