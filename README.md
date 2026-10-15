@@ -4,11 +4,11 @@ A desk display that shows nearby aircraft as a live ATC-style radar scope, built
 
 This is a TypeScript monorepo built from [iocodigital/starter-template](https://github.com/iocodigital/starter-template). It replaces the earlier Python version (`main.py` + `static/index.html`), which is still on the `claude/flight-wall-prototype-xf7h3v` branch.
 
-| Package           | What it is                                                                                                                                                                      |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api`        | Hono server. `GET /api/aircraft` proxies an ADS-B feed through a shared cache and adds routes from the adsb.lol route database. In production it also serves the built web app. |
-| `apps/web`        | Vite + React. One fullscreen canvas scope and a board view, polling the API every 5 s.                                                                                          |
-| `packages/shared` | Types, Zod schemas (`@flight/shared/schemas`), ranges and geo helpers.                                                                                                          |
+| Package           | What it is                                                                                                                                                                 |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api`        | Hono server. `GET /api/aircraft` proxies an ADS-B feed through a shared cache and adds origin/destination from adsbdb.com. In production it also serves the built web app. |
+| `apps/web`        | Vite + React. One fullscreen canvas scope and a board view, polling the API every 5 s.                                                                                     |
+| `packages/shared` | Types, Zod schemas (`@flight/shared/schemas`), ranges and geo helpers.                                                                                                     |
 
 ## Run it locally
 
