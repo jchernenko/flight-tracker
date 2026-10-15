@@ -2,6 +2,7 @@ import type { Aircraft, LatLon } from '@flight/shared';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { deadReckon, offsetNm, positionAgeSec, ringStepNm } from './geometry';
 import { isEmergency, placeTag, tagLines, type Rect } from './tags';
+import { BORDER, LANDMARKS } from './landmarks';
 
 const COLORS = {
   background: '#050505',
@@ -16,6 +17,8 @@ const COLORS = {
   ground: '#6b5328',
   alert: '#ff4d4d',
   sweep: '255, 157, 0',
+  map: '#4a3818',
+  mapLabel: '#6b5328',
 };
 
 const FRAME_MS = 1000 / 30; // the tablet is slow; 30 fps is plenty for a scope
@@ -86,7 +89,11 @@ export class RadarRenderer {
     // The API may answer from its cache with the same picture. Keep the first
     // receive time so dead-reckoning doesn't jump backwards.
     if (this.snapshot?.fetchedAt === next.fetchedAt) return;
+    const centerChanged =
+      this.snapshot?.center.lat !== next.center.lat ||
+      this.snapshot?.center.lon !== next.center.lon;
     this.snapshot = next;
+    if (centerChanged) this.buildStaticLayer();
 
     const seen = new Set<string>();
     for (const a of next.aircraft) {
@@ -190,6 +197,8 @@ export class RadarRenderer {
       );
     }
 
+    this.drawMap(g);
+
     // Home marker.
     g.strokeStyle = COLORS.compass;
     g.beginPath();
@@ -198,6 +207,89 @@ export class RadarRenderer {
     g.moveTo(cx, cy - 7);
     g.lineTo(cx, cy + 7);
     g.stroke();
+  }
+
+  /** Dim landmarks and the border, drawn into the static layer once per resize, range or center change. */
+  private drawMap(g: CanvasRenderingContext2D): void {
+    const center = this.snapshot?.center;
+    if (!center) return;
+    const { cx, cy, radiusPx, fontPx } = this;
+    const scale = this.pxPerNm;
+    const toXY = (p: { lat: number; lon: number }) => {
+      const o = offsetNm(center, p);
+      return {
+        x: cx + o.eastNm * scale,
+        y: cy - o.northNm * scale,
+        distNm: Math.hypot(o.eastNm, o.northNm),
+        o,
+      };
+    };
+
+    g.save();
+    g.beginPath();
+    g.arc(cx, cy, radiusPx, 0, Math.PI * 2);
+    g.clip();
+
+    // Border: dashed, like an ATC video map boundary.
+    g.strokeStyle = COLORS.map;
+    g.lineWidth = 1;
+    g.setLineDash([6, 6]);
+    g.beginPath();
+    BORDER.forEach((p, i) => {
+      const { x, y } = toXY(p);
+      if (i === 0) g.moveTo(x, y);
+      else g.lineTo(x, y);
+    });
+    g.stroke();
+    g.setLineDash([]);
+
+    const labelFont = `${Math.round(fontPx * 0.75)}px ${FONT}`;
+    g.font = labelFont;
+    g.textBaseline = 'middle';
+    for (const lm of LANDMARKS) {
+      const { x, y, distNm } = toXY(lm);
+      if (distNm > this.rangeNm) continue;
+      g.strokeStyle = COLORS.map;
+      g.fillStyle = COLORS.map;
+      g.beginPath();
+      if (lm.kind === 'airport') {
+        g.arc(x, y, 4, 0, Math.PI * 2);
+        g.moveTo(x - 6, y);
+        g.lineTo(x + 6, y);
+        g.stroke();
+      } else if (lm.kind === 'peak') {
+        g.moveTo(x, y - 4);
+        g.lineTo(x + 4, y + 3);
+        g.lineTo(x - 4, y + 3);
+        g.closePath();
+        g.stroke();
+      } else {
+        g.fillRect(x - 1.5, y - 1.5, 3, 3);
+      }
+      g.fillStyle = COLORS.mapLabel;
+      g.textAlign = 'left';
+      g.fillText(lm.label, x + 8, y);
+    }
+    g.restore();
+
+    // Beyond range: a tick and label just inside the outer ring, on the landmark's bearing.
+    g.font = labelFont;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (const lm of LANDMARKS) {
+      const { distNm, o } = toXY(lm);
+      if (!lm.edge || distNm <= this.rangeNm) continue;
+      const sin = o.eastNm / distNm;
+      const cos = o.northNm / distNm;
+      g.strokeStyle = COLORS.map;
+      g.beginPath();
+      g.moveTo(cx + sin * radiusPx, cy - cos * radiusPx);
+      g.lineTo(cx + sin * (radiusPx - 18), cy - cos * (radiusPx - 18));
+      g.stroke();
+      const r = radiusPx - 18 - fontPx;
+      g.fillStyle = COLORS.mapLabel;
+      g.fillText(`${lm.label} ${Math.round(distNm)}`, cx + sin * r, cy - cos * r);
+    }
   }
 
   /** A soft glow drawn once per color and stamped under each blip (cheaper than shadowBlur). */
