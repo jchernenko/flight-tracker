@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Aircraft, Route } from '@flight/shared';
+import { distanceNm, type Aircraft, type LatLon, type Route } from '@flight/shared';
 import { airportCity, isAirlineCallsign } from '../utils/lookups.js';
 import { USER_AGENT } from './providers/http.js';
 
@@ -12,11 +12,20 @@ const FAILURE_BACKOFF_MS = 5 * 60 * 1000;
 const MAX_LOOKUPS_PER_CYCLE = 20;
 const CONCURRENCY = 4;
 const MAX_CACHE_ENTRIES = 5000;
+/**
+ * adsbdb's callsign routes are sometimes stale (flight numbers get reused), so
+ * a route is only shown when the aircraft is roughly on the way: going via its
+ * position may be at most this much longer than flying direct.
+ */
+const DETOUR_FACTOR = 1.25;
+const DETOUR_SLACK_NM = 100;
 
 const airportSchema = z.object({
   iata_code: z.string().nullish(),
   icao_code: z.string().nullish(),
   municipality: z.string().nullish(),
+  latitude: z.number().nullish(),
+  longitude: z.number().nullish(),
 });
 
 const callsignResponseSchema = z.object({
@@ -38,7 +47,19 @@ export interface RouteLookup {
   idle(): Promise<void>;
 }
 
-type CacheEntry = { route: Route | null; expires: number };
+type Ends = { from: LatLon; to: LatLon } | null;
+type CacheEntry = { route: Route | null; ends: Ends; expires: number };
+
+const latLon = (a: z.infer<typeof airportSchema>): LatLon | null =>
+  a.latitude != null && a.longitude != null ? { lat: a.latitude, lon: a.longitude } : null;
+
+/** True when the aircraft could be flying this route; unknown airport positions count as plausible. */
+export function onTheWay(position: LatLon, ends: Ends): boolean {
+  if (!ends) return true;
+  const direct = distanceNm(ends.from, ends.to);
+  const via = distanceNm(ends.from, position) + distanceNm(position, ends.to);
+  return via <= direct * DETOUR_FACTOR + DETOUR_SLACK_NM;
+}
 
 export function createRouteLookup(
   options: { baseUrl?: string; now?: () => number; fetchFn?: typeof fetch } = {},
@@ -47,13 +68,13 @@ export function createRouteLookup(
   const cache = new Map<string, CacheEntry>();
   let pending: Promise<void> | null = null;
 
-  function remember(callsign: string, route: Route | null, ttlMs: number) {
+  function remember(callsign: string, route: Route | null, ttlMs: number, ends: Ends = null) {
     if (cache.size >= MAX_CACHE_ENTRIES) {
       const t = now();
       for (const [key, entry] of cache) if (entry.expires <= t) cache.delete(key);
       if (cache.size >= MAX_CACHE_ENTRIES) cache.clear();
     }
-    cache.set(callsign, { route, expires: now() + ttlMs });
+    cache.set(callsign, { route, ends, expires: now() + ttlMs });
   }
 
   async function lookup(callsign: string) {
@@ -85,7 +106,9 @@ export function createRouteLookup(
               destinationCity: airportCity(to) ?? destination.municipality ?? null,
             }
           : null;
-      remember(callsign, route, ROUTE_TTL_MS);
+      const fromPos = latLon(origin);
+      const toPos = latLon(destination);
+      remember(callsign, route, ROUTE_TTL_MS, fromPos && toPos ? { from: fromPos, to: toPos } : null);
     } catch (err) {
       console.warn(
         `Route lookup for ${callsign} failed:`,
@@ -120,8 +143,8 @@ export function createRouteLookup(
       }
 
       return aircraft.map((a) => {
-        const route = a.callsign ? (cache.get(a.callsign)?.route ?? null) : null;
-        return route ? { ...a, route } : a;
+        const cached = a.callsign ? cache.get(a.callsign) : undefined;
+        return cached?.route && onTheWay(a, cached.ends) ? { ...a, route: cached.route } : a;
       });
     },
     idle: () => pending ?? Promise.resolve(),

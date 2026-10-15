@@ -3,10 +3,10 @@
   font-family: var(--font-sans);
 }
 html[data-theme='dark'] .flight-map .leaflet-tile-pane {
-  filter: grayscale(1) brightness(0.42) contrast(1.25);
+  filter: grayscale(1) brightness(1.35) contrast(1.15);
 }
 html[data-theme='light'] .flight-map .leaflet-tile-pane {
-  filter: grayscale(1) contrast(1.02) brightness(1.03);
+  filter: grayscale(1) contrast(1.2) brightness(0.97);
 }
 .flight-map .leaflet-control-attribution {
   background: color-mix(in srgb, var(--color-panel) 80%, transparent);

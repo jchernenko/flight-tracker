@@ -113,7 +113,7 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
       radius: rangeNm * NM_TO_M,
       color: t.text,
       weight: 1,
-      opacity: 0.25,
+      opacity: 0.45,
       dashArray: '1 5',
       fill: false,
       interactive: false,
