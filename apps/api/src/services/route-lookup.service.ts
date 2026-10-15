@@ -61,8 +61,14 @@ export function createRouteLookup(
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(8_000),
       });
-      if (!response.ok) throw new Error(`routeset responded ${response.status}`);
-      const routes = routesetSchema.parse(await response.json());
+      const text = await response.text();
+      if (!response.ok || !text.trim()) {
+        const type = response.headers.get('content-type') ?? 'no content-type';
+        throw new Error(
+          `routeset responded ${response.status} (${type}): ${text.slice(0, 120) || 'empty body'}`,
+        );
+      }
+      const routes = routesetSchema.parse(JSON.parse(text));
 
       const found = new Set<string>();
       for (const r of routes) {
