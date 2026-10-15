@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Aircraft, Route } from '@flight/shared';
 import { isAirlineCallsign } from '../utils/lookups.js';
+import { USER_AGENT } from './providers/http.js';
 
 // ADS-B carries no flight plan, so origin/destination come from the community
 // route database tar1090 uses, which infers a route from the callsign.
@@ -55,7 +56,8 @@ export function createRouteLookup(
     try {
       const response = await fetchFn(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        // adsb.lol rejects requests with no identifying User-Agent (403).
+        headers: { 'Content-Type': 'application/json', 'User-Agent': USER_AGENT },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(8_000),
       });
