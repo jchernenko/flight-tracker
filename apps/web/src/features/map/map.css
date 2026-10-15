@@ -1,9 +1,9 @@
-/* Amber-tinted dark map so it matches the scope. */
+/* Dim neutral gray map so the amber aircraft stand out against it. */
 .flight-map {
   background: var(--color-scope-bg);
 }
 .flight-map .leaflet-tile-pane {
-  filter: sepia(0.9) saturate(1.6) hue-rotate(-10deg) brightness(0.85);
+  filter: grayscale(1) brightness(0.6) contrast(1.1);
 }
 .flight-map .leaflet-control-attribution {
   background: rgb(5 5 5 / 0.7);
@@ -19,6 +19,13 @@
   position: relative;
   font-family: var(--font-mono);
   color: #ffb000;
+  /* dark outline keeps tags readable over streets and labels */
+  text-shadow:
+    -1px -1px 0 #000,
+    1px -1px 0 #000,
+    -1px 1px 0 #000,
+    1px 1px 0 #000,
+    0 0 4px #000;
 }
 .ac-glyph {
   position: absolute;
@@ -28,7 +35,9 @@
   text-align: center;
   font-size: 14px;
   line-height: 18px;
-  text-shadow: 0 0 6px #ff9d00;
+  text-shadow:
+    0 0 2px #000,
+    0 0 6px #ff9d00;
 }
 .ac-label {
   position: absolute;
@@ -38,13 +47,13 @@
   white-space: pre;
   font-size: 12px;
   line-height: 1.15;
-  color: #a08350;
+  color: #e6b866;
 }
 .ac-label b {
   color: #ffcc66;
 }
 .ac-ground {
-  color: #6b5328;
+  color: #9c7c44;
 }
 .ac-alert,
 .ac-alert .ac-label,
