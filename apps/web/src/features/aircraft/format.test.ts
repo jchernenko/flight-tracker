@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Aircraft } from '@flight/shared';
 import {
   altitudeText,
+  compassPoint,
   headingText,
   routeCities,
   routeCode,
@@ -45,7 +46,16 @@ describe('format', () => {
   });
 
   it('formats heading, vertical speed and where the aircraft is', () => {
-    expect(headingText(ac({}))).toBe('007°');
+    expect(headingText(ac({}))).toBe('007° N');
+    expect(headingText(ac({ trackDeg: 290 }))).toBe('290° W');
+    expect(headingText(ac({ trackDeg: 135 }))).toBe('135° SE');
+    expect(headingText(ac({ trackDeg: 359.6 }))).toBe('000° N');
+    expect([compassPoint(22), compassPoint(23), compassPoint(-45), compassPoint(337)]).toEqual([
+      'N',
+      'NE',
+      'NW',
+      'NW',
+    ]);
     expect(verticalSpeedText(ac({ verticalRateFpm: -1180 }))).toBe('−1,200');
     expect(whereText({ lat: 49.22, lon: -122.6 }, ac({ lon: -122.35 }))).toBe('9.8 nm E of you');
   });

@@ -52,18 +52,24 @@ export const speedText = (a: Aircraft): string =>
   a.groundSpeedKt === null ? '—' : String(Math.round(a.groundSpeedKt));
 
 /** Heading as three digits and a degree sign: "007°". */
-export const headingText = (a: Aircraft): string =>
-  a.trackDeg === null ? '—' : `${String(Math.round(a.trackDeg) % 360).padStart(3, '0')}°`;
-
 const POINTS = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+
+/** The nearest of the eight compass points: 290° is "W", 315° is "NW". */
+export const compassPoint = (deg: number): string =>
+  POINTS[Math.round((((deg % 360) + 360) % 360) / 45) % 8]!;
+
+/** "007° N". */
+export const headingText = (a: Aircraft): string =>
+  a.trackDeg === null
+    ? '—'
+    : `${String(Math.round(a.trackDeg) % 360).padStart(3, '0')}° ${compassPoint(a.trackDeg)}`;
 
 /** "9.8 nm E of you". */
 export function whereText(home: LatLon, a: Aircraft): string {
   const dist = distanceNm(home, a);
   const cosLat = Math.cos((home.lat * Math.PI) / 180);
   const bearing = (Math.atan2((a.lon - home.lon) * cosLat, a.lat - home.lat) * 180) / Math.PI;
-  const point = POINTS[Math.round((bearing + 360) / 45) % 8]!;
-  return `${dist.toFixed(1)} nm ${point} of you`;
+  return `${dist.toFixed(1)} nm ${compassPoint(bearing)} of you`;
 }
 
 /** "Boeing 737 MAX 8 · C-FNWD · 9.8 nm E of you". */
