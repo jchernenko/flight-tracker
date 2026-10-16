@@ -6,14 +6,15 @@ import { distanceNm, type Aircraft } from '@flight/shared';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { STALE_AFTER_MS } from '../aircraft/status';
 import { alertRgb, altitudeHue, altitudeRgb, type Theme } from '../../lib/theme';
-import { deadReckon, positionAgeSec, toLatLon, type Offset } from '../radar/geometry';
+import { deadReckon, positionAgeSec, toLatLon } from '../radar/geometry';
 import { isEmergency, tagLines } from '../radar/tags';
+import { splitPath, trackHistory, trailPath } from '../radar/trails';
 
 const NM_TO_M = 1852;
 /** Markers move this often between polls; plenty for a map, cheap for the tablet. */
 const TICK_MS = 1000;
+/** Trails are drawn as this many runs, each fainter than the one before, to fade out. */
 const TRAIL_SEGMENTS = 6;
-const TRAIL_SEGMENT_SEC = 27;
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
 const ATTRIBUTION =
@@ -231,20 +232,22 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
     }
     // Frozen until a new picture arrives, so markers don't jump ahead.
     if (frozenElapsedRef.current !== null) elapsed = frozenElapsedRef.current;
+    const nowMs = Date.parse(snap.servedAt) + elapsed;
     for (const { marker, aircraft: a, trail } of entriesRef.current.values()) {
       const head = deadReckon(a, snap.center, positionAgeSec(a, snap.servedAt, elapsed));
       const pos = toLatLon(snap.center, head);
       marker.setLatLng([pos.lat, pos.lon]);
 
-      const moving = !a.onGround && a.groundSpeedKt !== null && a.trackDeg !== null;
+      // Through the positions it reported, so turns show, like the radar.
+      const path = trailPath(a, head, snap.center, trackHistory.fixesFor(a.hex), nowMs);
+      const runs = splitPath(path, TRAIL_SEGMENTS);
       trail.forEach((line, i) => {
-        if (!moving) return line.setLatLngs([]);
-        const from = toLatLon(snap.center, back(head, a, i * TRAIL_SEGMENT_SEC));
-        const to = toLatLon(snap.center, back(head, a, (i + 1) * TRAIL_SEGMENT_SEC));
-        line.setLatLngs([
-          [from.lat, from.lon],
-          [to.lat, to.lon],
-        ]);
+        line.setLatLngs(
+          (runs[i] ?? []).map((o) => {
+            const p = toLatLon(snap.center, o);
+            return [p.lat, p.lon] as [number, number];
+          }),
+        );
       });
     }
   }
@@ -257,16 +260,6 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
   }, []);
 
   return <div ref={containerRef} className="flight-map h-full w-full" aria-label="Flight map" />;
-}
-
-/** Where the aircraft was `sec` seconds ago, straight back along its track. */
-function back(head: Offset, a: Aircraft, sec: number): Offset {
-  const distNm = ((a.groundSpeedKt ?? 0) / 3600) * sec;
-  const rad = ((a.trackDeg ?? 0) * Math.PI) / 180;
-  return {
-    eastNm: head.eastNm - distNm * Math.sin(rad),
-    northNm: head.northNm - distNm * Math.cos(rad),
-  };
 }
 
 const trailColor = (theme: Theme, a: Aircraft): string =>

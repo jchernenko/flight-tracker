@@ -2,9 +2,10 @@ import type { Aircraft, LatLon } from '@flight/shared';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { STALE_AFTER_MS } from '../aircraft/status';
 import { alertRgb, altitudeRgb, type Theme } from '../../lib/theme';
-import { deadReckon, offsetNm, positionAgeSec, ringStepNm } from './geometry';
+import { deadReckon, offsetNm, positionAgeSec, ringStepNm, type Offset } from './geometry';
 import { isEmergency, placeTag, tagLines, type Rect, type TagLine } from './tags';
 import { BORDER, LANDMARKS } from './landmarks';
+import { trackHistory, trailPath } from './trails';
 
 const FRAME_MS = 1000 / 30; // the tablet is slow; 30 fps is plenty for a scope
 const SANS = 'Geist, system-ui, sans-serif';
@@ -16,21 +17,15 @@ const FONTS: Record<TagLine['kind'], string> = {
 };
 const TAG_LINE_H = 15;
 const TAG_GAP = 10;
-/** Comet trails show this much of the track behind each aircraft. */
-const TRAIL_SEC = 160;
-const TRAIL_POINTS = 24;
 const GLOW_RADIUS = 16;
 const HIT_RADIUS = 22;
 const PULSE_MS = 1400;
 const ACQUIRING_ARC_RAD = 0.7;
 const ACQUIRING_SEC_PER_RAD = 0.9;
 
-type TrailPoint = LatLon & { t: number };
-
 /** Everything that only changes with a new picture or theme is computed once, not per frame. */
 type Track = {
   aircraft: Aircraft;
-  trail: TrailPoint[];
   lines: TagLine[];
   tagW: number;
   emergency: boolean;
@@ -154,7 +149,7 @@ export class RadarRenderer {
       seen.add(a.hex);
       let track = this.tracks.get(a.hex);
       if (!track) {
-        track = { aircraft: a, trail: [], lines: [], tagW: 0, emergency: false, rgb: '' };
+        track = { aircraft: a, lines: [], tagW: 0, emergency: false, rgb: '' };
         this.tracks.set(a.hex, track);
       }
       track.aircraft = a;
@@ -162,11 +157,6 @@ export class RadarRenderer {
       track.rgb = this.colorFor(a);
       track.lines = tagLines(a);
       track.tagW = this.measureTag(track.lines);
-      const last = track.trail[track.trail.length - 1];
-      if (!last || last.lat !== a.lat || last.lon !== a.lon) {
-        track.trail.push({ lat: a.lat, lon: a.lon, t: Date.parse(a.seenAt) });
-        if (track.trail.length > TRAIL_POINTS) track.trail.shift();
-      }
     }
     for (const hex of this.tracks.keys()) if (!seen.has(hex)) this.tracks.delete(hex);
   }
@@ -376,7 +366,7 @@ export class RadarRenderer {
       const x = cx + pos.eastNm * scale;
       const y = cy - pos.northNm * scale;
       drawn.push({ track, x, y });
-      this.drawTrail(track, x, y, nowMs);
+      this.drawTrail(track, pos, nowMs);
     }
     ctx.restore();
 
@@ -448,41 +438,24 @@ export class RadarRenderer {
     }
   }
 
-  /**
-   * A comet tail fading out behind the aircraft over the last TRAIL_SEC: through
-   * its reported positions when there are enough, else straight back along its track.
-   */
-  private drawTrail(track: Track, x: number, y: number, nowMs: number): void {
+  /** A comet tail fading out behind the aircraft, curving through the turns it flew. */
+  private drawTrail(track: Track, head: Offset, nowMs: number): void {
     const { ctx, cx, cy } = this;
     const a = track.aircraft;
-    if (a.onGround || a.groundSpeedKt === null || a.groundSpeedKt < 1) return;
-    const scale = this.pxPerNm;
     const center = this.snapshot!.center;
+    const path = trailPath(a, head, center, trackHistory.fixesFor(a.hex), nowMs);
+    if (path.length < 2) return;
+    const scale = this.pxPerNm;
+    const points = path.map((o) => ({ x: cx + o.eastNm * scale, y: cy - o.northNm * scale }));
+    const first = points[0]!;
+    const tail = points[points.length - 1]!;
 
-    const points: { x: number; y: number }[] = [{ x, y }];
-    for (let i = track.trail.length - 1; i >= 0; i--) {
-      const p = track.trail[i]!;
-      if (nowMs - p.t > TRAIL_SEC * 1000) break;
-      const o = offsetNm(center, p);
-      points.push({ x: cx + o.eastNm * scale, y: cy - o.northNm * scale });
-    }
-
-    let tail = points[points.length - 1]!;
-    if (points.length < 4 || Math.hypot(tail.x - x, tail.y - y) < 8) {
-      if (a.trackDeg === null) return;
-      const len = (a.groundSpeedKt / 3600) * TRAIL_SEC * scale;
-      const rad = (a.trackDeg * Math.PI) / 180;
-      tail = { x: x - Math.sin(rad) * len, y: y + Math.cos(rad) * len };
-      points.length = 1;
-      points.push(tail);
-    }
-
-    const grad = ctx.createLinearGradient(x, y, tail.x, tail.y);
+    const grad = ctx.createLinearGradient(first.x, first.y, tail.x, tail.y);
     grad.addColorStop(0, `rgba(${track.rgb},0.9)`);
     grad.addColorStop(1, `rgba(${track.rgb},0)`);
     ctx.strokeStyle = grad;
     ctx.beginPath();
-    ctx.moveTo(x, y);
+    ctx.moveTo(first.x, first.y);
     for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y);
     ctx.stroke();
   }

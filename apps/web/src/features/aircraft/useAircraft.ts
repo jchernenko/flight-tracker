@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import type { AircraftResponse } from '@flight/shared';
 import { api } from '../../lib/api';
+import { trackHistory } from '../radar/trails';
 
 export const POLL_INTERVAL_MS = 5000;
 
@@ -17,6 +18,8 @@ export function useAircraft() {
         throw new Error(body?.error ?? `Request failed (${res.status})`);
       }
       const body = await res.json();
+      // Recorded here, not in a view, so trails survive switching between radar and map.
+      trackHistory.record(body.data);
       return { ...body.data, receivedAt: performance.now() };
     },
     refetchInterval: POLL_INTERVAL_MS,
