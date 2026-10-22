@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './map.css';
@@ -86,6 +86,7 @@ export function FlightMap({
   onSelect,
 }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
+  const rotorRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tilesRef = useRef<L.TileLayer[]>([]);
@@ -107,6 +108,17 @@ export function FlightMap({
   const center = snapshot?.center;
   const hasCenter = center !== undefined;
   const rotating = heading !== null;
+  // Side of the turned square: the frame's diagonal, so turning never shows a corner.
+  const [diagonal, setDiagonal] = useState(0);
+  useEffect(() => {
+    const outer = outerRef.current;
+    if (!rotating || !outer) return;
+    const observer = new ResizeObserver(() =>
+      setDiagonal(Math.ceil(Math.hypot(outer.clientWidth, outer.clientHeight)) + 2),
+    );
+    observer.observe(outer);
+    return () => observer.disconnect();
+  }, [rotating]);
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !center || mapRef.current) return;
@@ -156,7 +168,7 @@ export function FlightMap({
   // a corner, and pans and zooms stay centred on you. The labels turn back upright in CSS.
   useEffect(() => {
     const map = mapRef.current;
-    const el = containerRef.current;
+    const el = rotorRef.current;
     if (!map || !el) return;
     map.invalidateSize({ animate: false });
     const zoomAround = rotating ? 'center' : true;
@@ -174,7 +186,7 @@ export function FlightMap({
     const update = () => el.style.setProperty('--map-heading', `${heading.get() ?? 0}deg`);
     update();
     return heading.subscribe(update);
-  }, [heading, rotating, hasCenter]);
+  }, [heading, rotating, hasCenter, diagonal]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -185,7 +197,7 @@ export function FlightMap({
     circle.setRadius(rangeNm * NM_TO_M);
     // Fit the range circle to what's visible, not to the oversized square when turned.
     const outer = outerRef.current;
-    const inner = containerRef.current;
+    const inner = rotorRef.current;
     const pad =
       rotating && outer && inner
         ? Math.max(0, (inner.clientWidth - Math.min(outer.clientWidth, outer.clientHeight)) / 2)
@@ -194,7 +206,7 @@ export function FlightMap({
       padding: [pad, pad],
       animate: false,
     });
-  }, [rangeNm, center?.lat, center?.lon, rotating, hasCenter]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rangeNm, center?.lat, center?.lon, rotating, hasCenter, diagonal]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Swap the tiles and recolour the overlays when the theme changes.
   useEffect(() => {
@@ -342,12 +354,16 @@ export function FlightMap({
   }, []);
 
   return (
-    <div ref={outerRef} className="flight-map-frame relative h-full w-full overflow-hidden">
+    <div ref={outerRef} className="relative h-full w-full overflow-hidden">
+      {/* Turned in follow mode. Leaflet owns the classes on its own container,
+          so React never changes them; it turns this wrapper instead. */}
       <div
-        ref={containerRef}
-        className={`flight-map ${rotating ? 'flight-map-rotating' : 'h-full w-full'}`}
-        aria-label="Flight map"
-      />
+        ref={rotorRef}
+        className={rotating ? 'flight-map-rotating' : 'h-full w-full'}
+        style={rotating ? { width: diagonal, height: diagonal } : undefined}
+      >
+        <div ref={containerRef} className="flight-map h-full w-full" aria-label="Flight map" />
+      </div>
       {rotating && (
         // Leaflet's own attribution sits in a corner of the turned square, out of view.
         <p className="map-attribution" dangerouslySetInnerHTML={{ __html: ATTRIBUTION }} />

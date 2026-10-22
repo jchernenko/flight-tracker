@@ -19,17 +19,12 @@ html[data-theme='light'] .flight-map .leaflet-tile-pane {
 
 /*
  * Heading-up in follow mode: the map is a square as wide as the frame's
- * diagonal (√2 × the longer side covers it), turned by --map-heading.
+ * diagonal (sized in FlightMap), turned by --map-heading.
  */
-.flight-map-frame {
-  container-type: size;
-}
 .flight-map-rotating {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 142cqmax;
-  height: 142cqmax;
   transform: translate(-50%, -50%) rotate(calc(-1 * var(--map-heading, 0deg)));
 }
 .flight-map-rotating .leaflet-control-attribution {
