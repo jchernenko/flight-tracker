@@ -34,8 +34,10 @@ const overlaps = (a: Rect, b: Rect) =>
 
 /**
  * Places a w×h tag near a blip at (x, y), trying the four diagonal corners in
- * turn and taking the first that doesn't overlap a tag already placed.
- * Falls back to the top-right corner when every spot is taken.
+ * turn and taking the first that doesn't overlap a tag already placed. When
+ * every spot is taken the tag is left off (null), so a crowded scope shows
+ * blips instead of a pile of unreadable text, unless `force` places it at the
+ * top-right anyway (for the selected aircraft and emergencies).
  */
 export function placeTag(
   x: number,
@@ -44,15 +46,21 @@ export function placeTag(
   h: number,
   gap: number,
   placed: Rect[],
-): Rect {
+  force = false,
+): Rect | null {
   const candidates: Rect[] = [
     { x: x + gap, y: y - gap - h, w, h },
     { x: x + gap, y: y + gap, w, h },
     { x: x - gap - w, y: y - gap - h, w, h },
     { x: x - gap - w, y: y + gap, w, h },
   ];
-  const free = candidates.find((c) => !placed.some((p) => overlaps(c, p)));
-  const rect = free ?? candidates[0]!;
-  placed.push(rect);
+  const rect =
+    candidates.find((c) => !placed.some((p) => overlaps(c, p))) ?? (force ? candidates[0]! : null);
+  if (rect) placed.push(rect);
   return rect;
+}
+
+/** Collision test for labels placed elsewhere (the map's DOM labels). */
+export function overlapsAny(rect: Rect, placed: Rect[]): boolean {
+  return placed.some((p) => overlaps(rect, p));
 }

@@ -50,4 +50,12 @@ describe('placeTag', () => {
     expect(first).toEqual({ x: 105, y: 75, w: 50, h: 20 });
     expect(second).toEqual({ x: 105, y: 105, w: 50, h: 20 });
   });
+
+  it('leaves the tag off when every corner is taken, unless forced', () => {
+    const placed: Rect[] = [];
+    for (let i = 0; i < 4; i++) expect(placeTag(100, 100, 50, 20, 5, placed)).not.toBeNull();
+    expect(placeTag(100, 100, 50, 20, 5, placed)).toBeNull();
+    expect(placed).toHaveLength(4);
+    expect(placeTag(100, 100, 50, 20, 5, placed, true)).toEqual({ x: 105, y: 75, w: 50, h: 20 });
+  });
 });

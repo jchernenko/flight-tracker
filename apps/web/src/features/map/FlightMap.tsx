@@ -7,7 +7,7 @@ import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { STALE_AFTER_MS } from '../aircraft/status';
 import { alertRgb, altitudeHue, altitudeRgb, type Theme } from '../../lib/theme';
 import { deadReckon, positionAgeSec, toLatLon } from '../radar/geometry';
-import { isEmergency, tagLines } from '../radar/tags';
+import { isEmergency, overlapsAny, tagLines, type Rect } from '../radar/tags';
 import { splitPath, trackHistory, trailPath } from '../radar/trails';
 import type { HeadingStore } from '../follow/useFollowMe';
 
@@ -134,6 +134,7 @@ export function FlightMap({
       interactive: false,
     }).addTo(map);
     map.on('click', () => onSelectRef.current(null));
+    map.on('zoomend', () => moveAll());
     mapRef.current = map;
 
     const entries = entriesRef.current;
@@ -268,6 +269,8 @@ export function FlightMap({
       const entry = hex ? entriesRef.current.get(hex) : undefined;
       if (entry) entry.marker.setIcon(iconFor(entry.aircraft, entry.aircraft.hex === selectedHex));
     }
+    // A new icon shows its label again; settle which labels fit.
+    moveAll();
   }, [selectedHex]);
 
   /** Dead-reckons markers and trails between polls, like the radar; frozen while stale. */
@@ -298,6 +301,37 @@ export function FlightMap({
         );
       });
     }
+    declutter(snap);
+  }
+
+  /**
+   * Hides labels that would overlap one already shown, like the radar, so the
+   * selected aircraft, emergencies and the nearest traffic stay readable.
+   * Measured on screen, so it holds when the map is turned in follow mode.
+   */
+  function declutter(snap: AircraftSnapshot) {
+    const labels = [...entriesRef.current.values()]
+      .map(({ marker, aircraft: a }) => {
+        const label = marker.getElement()?.querySelector<HTMLElement>('.ac-label');
+        const forced = a.hex === selectedRef.current || isEmergency(a);
+        const rank =
+          a.hex === selectedRef.current ? -2 : isEmergency(a) ? -1 : distanceNm(snap.center, a);
+        return { label, forced, rank };
+      })
+      .filter((l): l is typeof l & { label: HTMLElement } => l.label != null)
+      .sort((a, b) => a.rank - b.rank);
+    // Read every rect before changing any style, so the browser lays out once.
+    const rects = labels.map(({ label }) => {
+      const r = label.getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    });
+    const placed: Rect[] = [];
+    labels.forEach(({ label, forced }, i) => {
+      const rect = rects[i]!;
+      const show = forced || !overlapsAny(rect, placed);
+      if (show) placed.push(rect);
+      label.style.visibility = show ? '' : 'hidden';
+    });
   }
 
   useEffect(() => {

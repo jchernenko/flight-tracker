@@ -491,9 +491,17 @@ export class RadarRenderer {
     const placed: Rect[] = [];
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
+    // Tags go on in order of importance, so when the scope is crowded the
+    // selected aircraft, emergencies and the nearest traffic keep theirs.
+    const rank = ({ track, x, y }: (typeof drawn)[number]) =>
+      track.aircraft.hex === this.selected ? -2 : track.emergency ? -1 : Math.hypot(x - cx, y - cy);
+    drawn.sort((a, b) => rank(a) - rank(b));
     for (const { track, x, y } of drawn) {
       const { lines, emergency, rgb } = track;
-      const tag = placeTag(x, y, track.tagW, lines.length * TAG_LINE_H, TAG_GAP, placed);
+      const force = emergency || track.aircraft.hex === this.selected;
+      const h = lines.length * TAG_LINE_H;
+      const tag = placeTag(x, y, track.tagW, h, TAG_GAP, placed, force);
+      if (!tag) continue;
       lines.forEach((line, i) => {
         ctx.font = FONTS[line.kind];
         ctx.fillStyle = emergency

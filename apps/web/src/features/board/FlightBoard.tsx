@@ -33,12 +33,12 @@ type Props = {
   onRetry: () => void;
 };
 
-/** FlightWall-style board: a card per aircraft, four across. */
+/** FlightWall-style board: a card per aircraft, four across (one across on a phone). */
 export function FlightBoard(props: Props) {
   const { status, aircraft } = props;
   return (
-    <div className="absolute inset-0">
-      <header className="flex h-[92px] items-center justify-between gap-8 px-8">
+    <div className="absolute inset-0 flex flex-col">
+      <header className="flex h-[92px] shrink-0 items-center justify-between gap-8 px-8 max-md:h-auto max-md:flex-col-reverse max-md:items-stretch max-md:gap-3 max-md:p-4">
         <Headline
           size="board"
           count={aircraft?.length ?? null}
@@ -52,10 +52,10 @@ export function FlightBoard(props: Props) {
           onSelectView={props.onSelectView}
           theme={props.theme}
           onSelectTheme={props.onSelectTheme}
-          className="w-[520px] shrink-0"
+          className="w-[520px] shrink-0 max-md:w-full"
         />
       </header>
-      <div className="absolute inset-x-8 top-[92px] bottom-8">
+      <div className="mx-8 mb-8 min-h-0 flex-1 max-md:mx-4 max-md:mb-4">
         {status.kind === 'offline' ? (
           <Offline feed={props.feed} onRetry={props.onRetry} />
         ) : status.kind === 'acquiring' ? (
@@ -93,8 +93,8 @@ function Grid({
   const fill = count <= 8;
   return (
     <div
-      className={`no-scrollbar grid h-full grid-cols-4 gap-4 overflow-y-auto ${
-        fill ? 'grid-rows-2' : 'auto-rows-[300px]'
+      className={`no-scrollbar grid h-full grid-cols-4 gap-4 overflow-y-auto max-md:auto-rows-[200px] max-md:grid-cols-1 max-md:gap-3 ${
+        fill ? 'grid-rows-2 max-md:grid-rows-none' : 'auto-rows-[300px]'
       } ${dimmed ? 'opacity-45' : ''}`}
     >
       {children}
