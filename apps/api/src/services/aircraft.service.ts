@@ -1,14 +1,34 @@
-import type { AircraftResponse, LatLon } from '@flight/shared';
+import { distanceNm, snapToGrid, type AircraftResponse, type LatLon } from '@flight/shared';
 import type { FeedProvider } from './providers/index.js';
 import type { RouteLookup } from './route-lookup.service.js';
 import { AppError } from '../utils/errors.js';
 
 export interface AircraftService {
-  /** Latest aircraft picture, refreshed from upstream at most once per cache window. */
-  get(): Promise<AircraftResponse>;
+  /**
+   * Latest aircraft picture around home, or around `at` (a phone's position),
+   * refreshed from upstream at most once per cache window per area.
+   */
+  get(at?: LatLon): Promise<AircraftResponse>;
 }
 
 type Picture = Omit<AircraftResponse, 'servedAt'>;
+
+/** One cached picture and its refresh window. */
+type Area = {
+  center: LatLon;
+  last: Picture | null;
+  /**
+   * When the window started, measured from the start of the upstream call so a
+   * slow fetch doesn't stretch the window past the clients' poll interval.
+   */
+  windowStart: number;
+  inflight: Promise<Picture> | null;
+};
+
+/** Phones this close to home share the home picture. */
+const HOME_AREA_NM = 2;
+/** Away-from-home areas kept at once; the least recently asked for is dropped. Bounds upstream load. */
+const MAX_AWAY_AREAS = 6;
 
 export function createAircraftService(options: {
   provider: FeedProvider;
@@ -18,50 +38,65 @@ export function createAircraftService(options: {
   ttlMs: number;
   now?: () => number;
 }): AircraftService {
-  const { provider, routes, center, radiusNm, ttlMs, now = Date.now } = options;
-  let last: Picture | null = null;
-  // When the window started, measured from the start of the upstream call so a
-  // slow fetch doesn't stretch the window past the clients' poll interval.
-  let windowStart = -Infinity;
-  let inflight: Promise<Picture> | null = null;
+  const { provider, routes, center: home, radiusNm, ttlMs, now = Date.now } = options;
+  const newArea = (center: LatLon): Area => ({
+    center,
+    last: null,
+    windowStart: -Infinity,
+    inflight: null,
+  });
+  const homeArea = newArea(home);
+  // Insertion order is recency: re-inserted on every request.
+  const away = new Map<string, Area>();
 
-  async function refresh(): Promise<Picture> {
+  function areaFor(at: LatLon | undefined): Area {
+    if (!at || distanceNm(home, at) <= HOME_AREA_NM) return homeArea;
+    const center = snapToGrid(at);
+    const key = `${center.lat},${center.lon}`;
+    const area = away.get(key) ?? newArea(center);
+    away.delete(key);
+    away.set(key, area);
+    if (away.size > MAX_AWAY_AREAS) away.delete(away.keys().next().value!);
+    return area;
+  }
+
+  async function refresh(area: Area): Promise<Picture> {
     const started = now();
-    windowStart = started;
+    area.windowStart = started;
     try {
-      const aircraft = routes.enrich(await provider.fetchAircraft(center, radiusNm));
-      last = {
-        center,
+      const aircraft = routes.enrich(await provider.fetchAircraft(area.center, radiusNm));
+      area.last = {
+        center: area.center,
         radiusNm,
         fetchedAt: new Date(started).toISOString(),
         stale: false,
         aircraft,
       };
-      return last;
+      return area.last;
     } catch (err) {
       console.error(`Feed "${provider.name}" failed:`, err instanceof Error ? err.message : err);
       // Keep serving the last good picture; either way, wait a full window before retrying.
-      if (!last) throw new AppError(502, 'Flight feed is unavailable');
-      last = { ...last, stale: true };
-      return last;
+      if (!area.last) throw new AppError(502, 'Flight feed is unavailable');
+      area.last = { ...area.last, stale: true };
+      return area.last;
     }
   }
 
-  async function current(): Promise<Picture> {
-    if (now() - windowStart < ttlMs) {
-      if (inflight) return inflight;
-      if (last) return last;
+  async function current(area: Area): Promise<Picture> {
+    if (now() - area.windowStart < ttlMs) {
+      if (area.inflight) return area.inflight;
+      if (area.last) return area.last;
       throw new AppError(502, 'Flight feed is unavailable');
     }
-    inflight ??= refresh().finally(() => {
-      inflight = null;
+    area.inflight ??= refresh(area).finally(() => {
+      area.inflight = null;
     });
-    return inflight;
+    return area.inflight;
   }
 
   return {
-    async get() {
-      const picture = await current();
+    async get(at) {
+      const picture = await current(areaFor(at));
       return { ...picture, servedAt: new Date(now()).toISOString() };
     },
   };

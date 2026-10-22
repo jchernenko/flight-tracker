@@ -24,11 +24,11 @@ type Props = {
   onSelect: (hex: string | null) => void;
 };
 
-/** The right-hand panel beside the scope and the map: controls, header, status and the list. */
+/** The right-hand panel beside the scope and the map (below them on a phone): controls, header, status and the list. */
 export function SidePanel(props: Props) {
   const { status, aircraft, home } = props;
   return (
-    <aside className="absolute inset-y-0 right-0 flex w-[400px] flex-col gap-[18px] border-l border-line bg-panel p-6">
+    <aside className="absolute inset-y-0 right-0 flex w-[400px] flex-col gap-[18px] border-l border-line bg-panel p-6 max-md:top-auto max-md:h-[45%] max-md:w-full max-md:gap-3 max-md:border-t max-md:border-l-0 max-md:p-4">
       <Controls
         view={props.view}
         onSelectView={props.onSelectView}

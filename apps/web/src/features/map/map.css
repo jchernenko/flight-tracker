@@ -18,6 +18,43 @@ html[data-theme='light'] .flight-map .leaflet-tile-pane {
 }
 
 /*
+ * Heading-up in follow mode: the map is a square as wide as the frame's
+ * diagonal (√2 × the longer side covers it), turned by --map-heading.
+ */
+.flight-map-frame {
+  container-type: size;
+}
+.flight-map-rotating {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 142cqmax;
+  height: 142cqmax;
+  transform: translate(-50%, -50%) rotate(calc(-1 * var(--map-heading, 0deg)));
+}
+.flight-map-rotating .leaflet-control-attribution {
+  display: none;
+}
+.flight-map-rotating .ac-hit {
+  transform: rotate(var(--map-heading, 0deg));
+}
+.map-attribution {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  margin: 0;
+  padding: 0 5px;
+  background: color-mix(in srgb, var(--color-panel) 80%, transparent);
+  color: var(--color-muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.map-attribution a {
+  color: var(--color-muted);
+}
+
+/*
  * Aircraft markers. The divIcon is 0×0 at the aircraft's position, and .ac-hit
  * is a 44px tap target centred on it. --h is the altitude hue, which the
  * theme's --t-alt-* turn into a colour.

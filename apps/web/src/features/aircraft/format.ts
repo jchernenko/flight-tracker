@@ -59,10 +59,11 @@ export const compassPoint = (deg: number): string =>
   POINTS[Math.round((((deg % 360) + 360) % 360) / 45) % 8]!;
 
 /** "007° N". */
+export const bearingText = (deg: number): string =>
+  `${String(Math.round(deg) % 360).padStart(3, '0')}° ${compassPoint(deg)}`;
+
 export const headingText = (a: Aircraft): string =>
-  a.trackDeg === null
-    ? '—'
-    : `${String(Math.round(a.trackDeg) % 360).padStart(3, '0')}° ${compassPoint(a.trackDeg)}`;
+  a.trackDeg === null ? '—' : bearingText(a.trackDeg);
 
 /** "9.8 nm E of you". */
 export function whereText(home: LatLon, a: Aircraft): string {

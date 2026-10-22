@@ -22,6 +22,16 @@ const HIT_RADIUS = 22;
 const PULSE_MS = 1400;
 const ACQUIRING_ARC_RAD = 0.7;
 const ACQUIRING_SEC_PER_RAD = 0.9;
+/** Turning the scope redraws the rings and landmarks, so ignore wobbles smaller than this. */
+const HEADING_STEP_DEG = 0.5;
+/** The slice of sky in front of you, shaded when the scope turns with the phone. */
+const VIEW_CONE_DEG = 60;
+const COMPASS_POINTS = [
+  ['N', 0],
+  ['E', 90],
+  ['S', 180],
+  ['W', 270],
+] as const;
 
 /** Everything that only changes with a new picture or theme is computed once, not per frame. */
 type Track = {
@@ -52,6 +62,10 @@ export class RadarRenderer {
   private selected: string | null = null;
   private stale = false;
   private acquiring = false;
+  /** Bearing that points up the screen; null is the usual north-up scope. */
+  private heading: number | null = null;
+  private headingSin = 0;
+  private headingCos = 1;
   /** Positions stop moving once the picture goes stale; this is the age they froze at. */
   private frozenElapsed: number | null = null;
   private hits: Hit[] = [];
@@ -119,6 +133,35 @@ export class RadarRenderer {
     this.acquiring = acquiring;
   }
 
+  /**
+   * Turn the scope so `deg` (a bearing from true north) points up the screen,
+   * for a phone held in the direction you're looking. Null is north-up.
+   */
+  setHeading(deg: number | null): void {
+    const current = this.heading;
+    if (
+      deg === null
+        ? current === null
+        : current !== null && Math.abs(((deg - current + 540) % 360) - 180) < HEADING_STEP_DEG
+    ) {
+      return;
+    }
+    this.heading = deg;
+    const rad = ((deg ?? 0) * Math.PI) / 180;
+    this.headingSin = Math.sin(rad);
+    this.headingCos = Math.cos(rad);
+    this.buildStaticLayer();
+  }
+
+  /** Screen position of an east/north offset from the centre, turned for the heading. */
+  private toScreen(o: Offset, scale = this.pxPerNm): { x: number; y: number } {
+    const { headingSin: s, headingCos: c } = this;
+    return {
+      x: this.cx + (o.eastNm * c - o.northNm * s) * scale,
+      y: this.cy - (o.eastNm * s + o.northNm * c) * scale,
+    };
+  }
+
   /** The aircraft drawn nearest to a point (CSS pixels on the canvas), if one is within reach. */
   hitTest(x: number, y: number): string | null {
     let best: Hit | null = null;
@@ -136,10 +179,17 @@ export class RadarRenderer {
   setSnapshot(next: AircraftSnapshot): void {
     // The API may answer from its cache with the same picture. Keep the first
     // receive time so dead-reckoning doesn't jump backwards.
-    if (this.snapshot?.fetchedAt === next.fetchedAt) return;
     const centerChanged =
       this.snapshot?.center.lat !== next.center.lat ||
       this.snapshot?.center.lon !== next.center.lon;
+    if (this.snapshot?.fetchedAt === next.fetchedAt) {
+      // Same picture, but a phone in follow mode has moved: re-centre only.
+      if (centerChanged) {
+        this.snapshot = { ...this.snapshot, center: next.center };
+        this.buildStaticLayer();
+      }
+      return;
+    }
     this.snapshot = next;
     this.frozenElapsed = null;
     if (centerChanged) this.buildStaticLayer();
@@ -225,11 +275,18 @@ export class RadarRenderer {
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     const r = radiusPx + 16;
-    g.fillText('N', cx, cy - r);
-    g.fillText('E', cx + r, cy);
-    g.fillText('S', cx, cy + r);
-    g.fillText('W', cx - r, cy);
+    for (const [label, bearing] of COMPASS_POINTS) {
+      const { x, y } = this.toScreen(
+        {
+          eastNm: Math.sin((bearing * Math.PI) / 180),
+          northNm: Math.cos((bearing * Math.PI) / 180),
+        },
+        r,
+      );
+      g.fillText(label, x, y);
+    }
 
+    if (this.heading !== null) this.drawViewCone(g);
     this.drawLandmarks(g);
 
     g.strokeStyle = theme.text;
@@ -239,16 +296,37 @@ export class RadarRenderer {
     g.stroke();
   }
 
+  /** Heading-up: a faint wedge for what's in front of you, and the heading above the scope. */
+  private drawViewCone(g: CanvasRenderingContext2D): void {
+    const { cx, cy, radiusPx, theme } = this;
+    const half = ((VIEW_CONE_DEG / 2) * Math.PI) / 180;
+    const up = -Math.PI / 2;
+    g.fillStyle = theme.text;
+    g.globalAlpha = 0.05;
+    g.beginPath();
+    g.moveTo(cx, cy);
+    g.arc(cx, cy, radiusPx, up - half, up + half);
+    g.closePath();
+    g.fill();
+    g.globalAlpha = 1;
+
+    // A caret on the outer ring marks straight ahead.
+    g.fillStyle = theme.text;
+    g.beginPath();
+    g.moveTo(cx, cy - radiusPx + 1);
+    g.lineTo(cx - 6, cy - radiusPx - 9);
+    g.lineTo(cx + 6, cy - radiusPx - 9);
+    g.closePath();
+    g.fill();
+  }
+
   /** Faint landmarks and the border, inside the scope only. */
   private drawLandmarks(g: CanvasRenderingContext2D): void {
     const center = this.snapshot?.center;
     if (!center) return;
     const { cx, cy, radiusPx, theme } = this;
     const scale = this.pxPerNm;
-    const toXY = (p: LatLon) => {
-      const o = offsetNm(center, p);
-      return { x: cx + o.eastNm * scale, y: cy - o.northNm * scale };
-    };
+    const toXY = (p: LatLon) => this.toScreen(offsetNm(center, p), scale);
 
     g.save();
     g.beginPath();
@@ -363,8 +441,7 @@ export class RadarRenderer {
       // In range by reported position, like the list, so every blip has a row and can be selected.
       const reported = offsetNm(center, a);
       if (Math.hypot(reported.eastNm, reported.northNm) > this.rangeNm) continue;
-      const x = cx + pos.eastNm * scale;
-      const y = cy - pos.northNm * scale;
+      const { x, y } = this.toScreen(pos, scale);
       drawn.push({ track, x, y });
       this.drawTrail(track, pos, nowMs);
     }
@@ -440,13 +517,13 @@ export class RadarRenderer {
 
   /** A comet tail fading out behind the aircraft, curving through the turns it flew. */
   private drawTrail(track: Track, head: Offset, nowMs: number): void {
-    const { ctx, cx, cy } = this;
+    const { ctx } = this;
     const a = track.aircraft;
     const center = this.snapshot!.center;
     const path = trailPath(a, head, center, trackHistory.fixesFor(a.hex), nowMs);
     if (path.length < 2) return;
     const scale = this.pxPerNm;
-    const points = path.map((o) => ({ x: cx + o.eastNm * scale, y: cy - o.northNm * scale }));
+    const points = path.map((o) => this.toScreen(o, scale));
     const first = points[0]!;
     const tail = points[points.length - 1]!;
 

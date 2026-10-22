@@ -21,6 +21,7 @@ A desk display for an old Samsung tablet that shows nearby aircraft as a live, A
 5. **Adjustable range.** Tapping the range readout cycles the scope range: 10 / 20 / 30 / 60 nm (default 30). Rings rescale to suit (e.g. every 5 nm at 10–20 nm, every 10 nm at 30 nm, every 20 nm at 60 nm). The choice is saved in `localStorage`, so it survives reloads. The API always fetches out to the largest range and the client filters, so changing range is instant and costs no extra upstream calls.
 6. **Board view.** A second fullscreen view, TheFlightWall style: one row per nearby aircraft, sorted by distance, showing callsign, airline name, aircraft type name, route (origin → destination), altitude, speed and distance. A single tap toggles between scope and board, and the choice is remembered like the range.
 7. **Route, airline and type names.** The API enriches each aircraft with `airlineName`, `typeName` and `route` (origin/destination airport codes) when it can. Route lookups go to an external callsign-to-route service, cached per callsign for hours (routes don't change mid-flight) so lookups stay well under that service's limits. Names come from bundled lookup tables. Any field that can't be resolved is simply left out; a failed lookup never blocks or fails `/api/aircraft`. On the scope, the data tag gains a third line with the destination when it's known.
+9. **Follow mode (phone).** A "Use my location" button on the Radar and Map views centres the display on the phone's GPS position and turns it heading-up from the compass (true north, using the World Magnetic Model for declination), so what's ahead of you is up the screen. Opt-in per visit (iOS only grants motion access from a tap); off by default, so the desk display is unchanged. If location is blocked it stays on home; with no compass it stays north-up. Below 768 px wide the side panel moves under the scope. The API takes optional `?lat=&lon=`: phones within 2 nm of home share the home picture, others get a picture per 0.05° grid cell (at most 6 cached at once), and the web app keeps using the home picture while it still covers the chosen range around the phone, so following near home costs no extra upstream calls.
 8. **Tablet-friendly.** Works as a home-screen/fullscreen web app on the tablet: no scrolling, no UI chrome, screen kept awake (Wake Lock API where supported), handles landscape and portrait. A small corner readout shows aircraft count, range and "last updated" / stale state.
 
 ## Out of scope for v1
@@ -28,7 +29,7 @@ A desk display for an old Samsung tablet that shows nearby aircraft as a live, A
 - Auth or user accounts (the display is read-only; the API only exposes public ADS-B data).
 - A full settings screen. Home location and fetch radius are env vars; the only in-app control is the range toggle.
 - Tap-to-select aircraft details (the board covers this),  airport/airspace/runway overlays, map tiles, sound.
-- Multiple locations or multiple users.
+- Multiple users or saved locations (follow mode only uses the phone's live position).
 
 ## Data
 No database for v1. Shared shape (`packages/shared`), roughly:

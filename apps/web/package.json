@@ -12,6 +12,7 @@
   "dependencies": {
     "@flight/shared": "*",
     "@tanstack/react-query": "^5.104.3",
+    "geomagnetism": "^0.2.0",
     "hono": "^4.13.13",
     "leaflet": "^1.9.4",
     "react": "^19.3.1",

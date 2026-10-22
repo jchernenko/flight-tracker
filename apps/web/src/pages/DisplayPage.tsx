@@ -10,6 +10,8 @@ import { aircraftInRange } from '../features/aircraft/inRange';
 import { clockText, sortForList } from '../features/aircraft/format';
 import { statusFor } from '../features/aircraft/status';
 import { FlightBoard } from '../features/board/FlightBoard';
+import { FollowButton } from '../features/follow/FollowButton';
+import { useFollowMe } from '../features/follow/useFollowMe';
 import { RadarScope } from '../features/radar/RadarScope';
 import { isEmergency } from '../features/radar/tags';
 import { useNow } from '../hooks/useNow';
@@ -37,8 +39,11 @@ export function DisplayPage() {
   const [view, setView] = usePersistentState<View>('view', 'radar', parseView);
   const [themeName, setThemeName] = usePersistentState<ThemeName>('theme', 'dark', parseTheme);
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
-  const { data, isPending, isError, refetch } = useAircraft();
+  const follow = useFollowMe();
+  const { data, isPending, isError, refetch } = useAircraft(follow.position, rangeNm);
   const info = useFeedInfo();
+  // The scope turns with the phone only once the compass is actually reading.
+  const heading = follow.on && follow.compass === 'ok' ? follow.heading : null;
 
   const theme = THEMES[themeName];
   useLayoutEffect(() => applyTheme(theme), [theme]);
@@ -66,7 +71,7 @@ export function DisplayPage() {
     onCycleRange: cycleRange,
     status,
     feed: info?.feed,
-    place: info?.place,
+    place: follow.position ? 'Your location' : info?.place,
     aircraft: inRange,
   };
 
@@ -88,7 +93,7 @@ export function DisplayPage() {
 
   return (
     <main className="relative h-full w-full">
-      <section className="absolute inset-y-0 left-0 right-[400px] overflow-hidden">
+      <section className="absolute inset-y-0 left-0 right-[400px] overflow-hidden max-md:right-0 max-md:bottom-[45%]">
         {view === 'radar' ? (
           <RadarScope
             snapshot={data}
@@ -97,6 +102,7 @@ export function DisplayPage() {
             selectedHex={selected}
             stale={stale}
             acquiring={status.kind === 'acquiring'}
+            heading={heading}
             onSelect={select}
           />
         ) : (
@@ -108,6 +114,7 @@ export function DisplayPage() {
                 theme={theme}
                 selectedHex={selected}
                 stale={stale}
+                heading={heading}
                 onSelect={select}
               />
             </Suspense>
@@ -116,6 +123,7 @@ export function DisplayPage() {
         {scopeMessage && <ScopeMessage>{scopeMessage}</ScopeMessage>}
         <ScopeBanners status={status} emergencies={emergencies} feed={info?.feed} />
         <AltitudeLegend />
+        <FollowButton follow={follow} className="absolute right-5 bottom-5 z-[1100]" />
       </section>
       <SidePanel
         {...shared}

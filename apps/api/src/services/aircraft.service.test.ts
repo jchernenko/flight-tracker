@@ -90,4 +90,37 @@ describe('aircraft service', () => {
     await expect(service.get()).rejects.toMatchObject(unavailable);
     expect(provider.fetchAircraft).toHaveBeenCalledTimes(2);
   });
+
+  describe('away from home', () => {
+    it('shares the home picture with a phone near home', async () => {
+      const { provider, service } = setup(async () => [plane]);
+      await service.get();
+      const data = await service.get({ lat: 49.01, lon: -122.01 });
+      expect(provider.fetchAircraft).toHaveBeenCalledTimes(1);
+      expect(data.center).toEqual({ lat: 49, lon: -122 });
+    });
+
+    it('fetches around the grid point nearest a phone further away, cached separately', async () => {
+      const { provider, service, tick } = setup(async () => [plane]);
+      await service.get();
+      const away = await service.get({ lat: 49.512, lon: -123.118 });
+      expect(away.center).toEqual({ lat: 49.5, lon: -123.1 });
+      expect(provider.fetchAircraft).toHaveBeenLastCalledWith({ lat: 49.5, lon: -123.1 }, 60);
+      // Another phone in the same grid cell, inside the window: no new call.
+      tick(1000);
+      await service.get({ lat: 49.49, lon: -123.09 });
+      expect(provider.fetchAircraft).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps a bounded number of away areas', async () => {
+      const { provider, service } = setup(async () => [plane]);
+      for (let i = 0; i < 7; i++) await service.get({ lat: 50 + i, lon: -122 });
+      expect(provider.fetchAircraft).toHaveBeenCalledTimes(7);
+      // The first area was dropped, so asking again fetches; the most recent is still cached.
+      await service.get({ lat: 56, lon: -122 });
+      expect(provider.fetchAircraft).toHaveBeenCalledTimes(7);
+      await service.get({ lat: 50, lon: -122 });
+      expect(provider.fetchAircraft).toHaveBeenCalledTimes(8);
+    });
+  });
 });

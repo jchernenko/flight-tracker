@@ -1,6 +1,7 @@
 import { useEffect, useRef, type MouseEvent } from 'react';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import type { Theme } from '../../lib/theme';
+import type { HeadingStore } from '../follow/useFollowMe';
 import { RadarRenderer } from './renderer';
 
 type Props = {
@@ -10,6 +11,8 @@ type Props = {
   selectedHex: string | null;
   stale: boolean;
   acquiring: boolean;
+  /** In follow mode, turns the scope so the way the phone faces is up. */
+  heading: HeadingStore | null;
   /** Called with the tapped aircraft, or null for a tap on empty scope. */
   onSelect: (hex: string | null) => void;
 };
@@ -21,6 +24,7 @@ export function RadarScope({
   selectedHex,
   stale,
   acquiring,
+  heading,
   onSelect,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -54,6 +58,17 @@ export function RadarScope({
   useEffect(() => rendererRef.current?.setSelected(selectedHex), [selectedHex]);
   useEffect(() => rendererRef.current?.setStale(stale), [stale]);
   useEffect(() => rendererRef.current?.setAcquiring(acquiring), [acquiring]);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !heading) return;
+    const update = () => renderer.setHeading(heading.get());
+    update();
+    const unsubscribe = heading.subscribe(update);
+    return () => {
+      unsubscribe();
+      renderer.setHeading(null);
+    };
+  }, [heading]);
   useEffect(() => {
     if (snapshot) rendererRef.current?.setSnapshot(snapshot);
   }, [snapshot]);

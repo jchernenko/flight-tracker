@@ -8,7 +8,10 @@ const Z = 'z-[1100]';
 
 export function AltitudeLegend() {
   return (
-    <div className={`pointer-events-none absolute bottom-[26px] left-7 w-[220px] ${Z}`} aria-hidden>
+    <div
+      className={`pointer-events-none absolute bottom-[26px] left-7 w-[220px] max-md:hidden ${Z}`}
+      aria-hidden
+    >
       <div className="altitude-gradient h-1 rounded-[2px]" />
       <div className="mt-2 flex justify-between font-mono text-[11px] text-dim">
         <span>0</span>

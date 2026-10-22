@@ -9,6 +9,7 @@ import { alertRgb, altitudeHue, altitudeRgb, type Theme } from '../../lib/theme'
 import { deadReckon, positionAgeSec, toLatLon } from '../radar/geometry';
 import { isEmergency, tagLines } from '../radar/tags';
 import { splitPath, trackHistory, trailPath } from '../radar/trails';
+import type { HeadingStore } from '../follow/useFollowMe';
 
 const NM_TO_M = 1852;
 /** Markers move this often between polls; plenty for a map, cheap for the tablet. */
@@ -69,11 +70,22 @@ type Props = {
   theme: Theme;
   selectedHex: string | null;
   stale: boolean;
+  /** In follow mode, turns the map so the way the phone faces is up. */
+  heading: HeadingStore | null;
   onSelect: (hex: string | null) => void;
 };
 
 /** Leaflet map view: gray street tiles, the home point, the range circle and live aircraft with comet trails. */
-export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSelect }: Props) {
+export function FlightMap({
+  snapshot,
+  rangeNm,
+  theme,
+  selectedHex,
+  stale,
+  heading,
+  onSelect,
+}: Props) {
+  const outerRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const tilesRef = useRef<L.TileLayer[]>([]);
@@ -91,8 +103,10 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
   onSelectRef.current = onSelect;
   staleRef.current = stale;
 
-  // Create the map once the home point is known.
+  // Create the map once the centre is known. In follow mode the centre moves with the phone.
   const center = snapshot?.center;
+  const hasCenter = center !== undefined;
+  const rotating = heading !== null;
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !center || mapRef.current) return;
@@ -119,7 +133,6 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
       fill: false,
       interactive: false,
     }).addTo(map);
-    map.fitBounds(rangeBounds(center.lat, center.lon, rangeNm));
     map.on('click', () => onSelectRef.current(null));
     mapRef.current = map;
 
@@ -134,18 +147,53 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
       snapshotRef.current = undefined;
       syncedRef.current = null;
     };
-    // Created once per home point; range, theme and data updates go through the effects below.
+    // Created once; the centre, range, theme and data go through the effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center?.lat, center?.lon]);
+  }, [hasCenter]);
+
+  // Heading-up: the map is drawn on an oversized square so turning it never shows
+  // a corner, and pans and zooms stay centred on you. The labels turn back upright in CSS.
+  useEffect(() => {
+    const map = mapRef.current;
+    const el = containerRef.current;
+    if (!map || !el) return;
+    map.invalidateSize({ animate: false });
+    const zoomAround = rotating ? 'center' : true;
+    Object.assign(map.options, {
+      touchZoom: zoomAround,
+      scrollWheelZoom: zoomAround,
+      doubleClickZoom: zoomAround,
+    });
+    if (rotating) map.dragging.disable();
+    else map.dragging.enable();
+    if (!heading) {
+      el.style.removeProperty('--map-heading');
+      return;
+    }
+    const update = () => el.style.setProperty('--map-heading', `${heading.get() ?? 0}deg`);
+    update();
+    return heading.subscribe(update);
+  }, [heading, rotating, hasCenter]);
 
   useEffect(() => {
     const map = mapRef.current;
     const circle = rangeRef.current;
-    if (!map || !circle) return;
-    const { lat, lng } = circle.getLatLng();
+    if (!map || !circle || !center) return;
+    circle.setLatLng([center.lat, center.lon]);
+    homeRef.current?.setLatLng([center.lat, center.lon]);
     circle.setRadius(rangeNm * NM_TO_M);
-    map.fitBounds(rangeBounds(lat, lng, rangeNm));
-  }, [rangeNm, center?.lat, center?.lon]);
+    // Fit the range circle to what's visible, not to the oversized square when turned.
+    const outer = outerRef.current;
+    const inner = containerRef.current;
+    const pad =
+      rotating && outer && inner
+        ? Math.max(0, (inner.clientWidth - Math.min(outer.clientWidth, outer.clientHeight)) / 2)
+        : 0;
+    map.fitBounds(rangeBounds(center.lat, center.lon, rangeNm), {
+      padding: [pad, pad],
+      animate: false,
+    });
+  }, [rangeNm, center?.lat, center?.lon, rotating, hasCenter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Swap the tiles and recolour the overlays when the theme changes.
   useEffect(() => {
@@ -159,7 +207,7 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
       const color = trailColor(theme, aircraft);
       for (const line of trail) line.setStyle({ color });
     }
-  }, [theme, center?.lat, center?.lon]);
+  }, [theme, hasCenter]);
 
   // Sync markers with each new picture, and with the range: only aircraft in
   // range are shown, like the radar and the list, so every marker can be selected.
@@ -210,7 +258,7 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
       }
     }
     moveAll();
-  }, [snapshot, rangeNm, center?.lat, center?.lon]);
+  }, [snapshot, rangeNm, hasCenter]);
 
   // Selection only changes the marker classes.
   useEffect(() => {
@@ -259,7 +307,19 @@ export function FlightMap({ snapshot, rangeNm, theme, selectedHex, stale, onSele
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={containerRef} className="flight-map h-full w-full" aria-label="Flight map" />;
+  return (
+    <div ref={outerRef} className="flight-map-frame relative h-full w-full overflow-hidden">
+      <div
+        ref={containerRef}
+        className={`flight-map ${rotating ? 'flight-map-rotating' : 'h-full w-full'}`}
+        aria-label="Flight map"
+      />
+      {rotating && (
+        // Leaflet's own attribution sits in a corner of the turned square, out of view.
+        <p className="map-attribution" dangerouslySetInnerHTML={{ __html: ATTRIBUTION }} />
+      )}
+    </div>
+  );
 }
 
 const trailColor = (theme: Theme, a: Aircraft): string =>

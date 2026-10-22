@@ -30,6 +30,32 @@ describe('GET /api/aircraft', () => {
     expect(await res.json()).toEqual({ success: true, data });
   });
 
+  it('passes a phone position through to the service', async () => {
+    const calls: unknown[] = [];
+    const app = createApp({
+      aircraftService: {
+        get: async (at) => {
+          calls.push(at);
+          return data;
+        },
+      },
+      info,
+    });
+    await app.request('/api/aircraft?lat=49.3&lon=-123.1');
+    await app.request('/api/aircraft');
+    expect(calls).toEqual([{ lat: 49.3, lon: -123.1 }, undefined]);
+  });
+
+  it.each(['?lat=49.3', '?lat=91&lon=0', '?lat=x&lon=0'])(
+    'rejects a bad position (%s) with the error envelope',
+    async (query) => {
+      const app = createApp({ aircraftService: { get: async () => data }, info });
+      const res = await app.request(`/api/aircraft${query}`);
+      expect(res.status).toBe(400);
+      expect(await res.json()).toEqual({ success: false, error: 'Invalid lat/lon' });
+    },
+  );
+
   it('returns the error envelope when the feed is down', async () => {
     const app = createApp({
       aircraftService: {
