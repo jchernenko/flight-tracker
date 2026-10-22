@@ -21,6 +21,11 @@ const envSchema = z.object({
   // airplanes.live and adsb.lol ask for at most ~1 request/second.
   CACHE_TTL_MS: z.coerce.number().int().min(1000).default(5000),
   ROUTES_ENABLED: booleanString,
+  /** FlightAware AeroAPI key. When set, it fills in routes adsbdb misses. */
+  AEROAPI_KEY: z.string().trim().min(1).optional(),
+  // ~$0.005 a query: 30 a day stays inside the Personal tier's free $5 a month.
+  AEROAPI_DAILY_LIMIT: z.coerce.number().int().min(1).max(1000).default(30),
+  AEROAPI_RADIUS_NM: z.coerce.number().positive().max(250).default(30),
   WEB_DIST_DIR: z.string().default('../web/dist'),
 });
 

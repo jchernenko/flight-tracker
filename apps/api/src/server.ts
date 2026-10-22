@@ -7,15 +7,26 @@ import { createApp } from './app.js';
 import { createAircraftService } from './services/aircraft.service.js';
 import { createFeedProvider } from './services/providers/index.js';
 import { createRouteLookup, noRouteLookup } from './services/route-lookup.service.js';
+import { createAeroApiFallback } from './services/aeroapi.service.js';
 
 const env = loadEnv();
 const provider = createFeedProvider(env);
+const home = { lat: env.HOME_LAT, lon: env.HOME_LON };
+const routes = env.ROUTES_ENABLED
+  ? createRouteLookup({
+      home,
+      fallbackRadiusNm: env.AEROAPI_RADIUS_NM,
+      fallback: env.AEROAPI_KEY
+        ? createAeroApiFallback({ apiKey: env.AEROAPI_KEY, dailyLimit: env.AEROAPI_DAILY_LIMIT })
+        : undefined,
+    })
+  : noRouteLookup;
 
 const app = createApp({
   aircraftService: createAircraftService({
     provider,
-    routes: env.ROUTES_ENABLED ? createRouteLookup() : noRouteLookup,
-    center: { lat: env.HOME_LAT, lon: env.HOME_LON },
+    routes,
+    center: home,
     radiusNm: env.FETCH_RADIUS_NM,
     ttlMs: env.CACHE_TTL_MS,
   }),
@@ -34,5 +45,6 @@ if (existsSync(webDist)) {
 }
 
 serve({ fetch: app.fetch, port: env.PORT }, ({ port }) => {
-  console.log(`API listening on :${port} (feed: ${provider.name})`);
+  const fallback = env.ROUTES_ENABLED && env.AEROAPI_KEY ? ', AeroAPI route fallback' : '';
+  console.log(`API listening on :${port} (feed: ${provider.name}${fallback})`);
 });

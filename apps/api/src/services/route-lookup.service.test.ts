@@ -126,3 +126,63 @@ describe('route lookup', () => {
     expect(near?.route).toMatchObject({ origin: 'YUL', destination: 'YVR' });
   });
 });
+
+describe('route lookup fallback', () => {
+  const home = { lat: 49.22, lon: -122.6 };
+  const at = (callsign: string, lat: number, lon: number) =>
+    ({ hex: callsign, callsign, lat, lon, route: null }) as Aircraft;
+  const fallbackRoute = {
+    origin: 'YYC',
+    destination: 'YVR',
+    originCity: 'Calgary',
+    destinationCity: 'Vancouver',
+  };
+
+  function setup(budget = Infinity) {
+    let left = budget;
+    const fallback = {
+      take: vi.fn(() => left-- > 0),
+      find: vi.fn(async (_callsign: string) => fallbackRoute),
+    };
+    const lookup = createRouteLookup({
+      fetchFn: fakeAdsbdb() as unknown as typeof fetch,
+      now: () => 0,
+      fallback,
+      home,
+    });
+    return { lookup, fallback };
+  }
+
+  it('asks the fallback only for nearby aircraft adsbdb misses or gets wrong, once each', async () => {
+    const { lookup, fallback } = setup();
+    const picture = [
+      at('ACA253', 49.2, -122.7), // adsbdb knows it
+      at('WJA9', 49.3, -122.5), // adsbdb doesn't
+      at('JZA8', 49.1, -122.8), // adsbdb's route is implausible here
+      at('WJA700', 51.0, -114.0), // a miss, but far from home
+    ];
+    lookup.enrich(picture);
+    await lookup.idle(); // adsbdb round
+    lookup.enrich(picture);
+    await lookup.idle(); // fallback round
+    lookup.enrich(picture);
+    await lookup.idle();
+
+    expect(fallback.find.mock.calls.map(([c]) => c).sort()).toEqual(['JZA8', 'WJA9']);
+    const routes = lookup.enrich(picture).map((a) => a.route);
+    expect(routes[0]).toMatchObject({ origin: 'YZF' });
+    expect(routes[1]).toEqual(fallbackRoute);
+    expect(routes[2]).toEqual(fallbackRoute);
+    expect(routes[3]).toBeNull();
+  });
+
+  it('spends a short budget on the nearest aircraft first', async () => {
+    const { lookup, fallback } = setup(1);
+    const picture = [at('WJA9', 49.6, -122.6), at('WJA10', 49.23, -122.6)];
+    lookup.enrich(picture);
+    await lookup.idle();
+    lookup.enrich(picture);
+    await lookup.idle();
+    expect(fallback.find.mock.calls.map(([c]) => c)).toEqual(['WJA10']);
+  });
+});
