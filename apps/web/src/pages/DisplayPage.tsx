@@ -42,8 +42,8 @@ export function DisplayPage() {
   const follow = useFollowMe();
   const { data, isPending, isError, refetch } = useAircraft(follow.position, rangeNm);
   const info = useFeedInfo();
-  // The scope turns with the phone only once the compass is actually reading.
-  const heading = follow.on && follow.compass === 'ok' ? follow.heading : null;
+  // The scope turns only once there's a heading: the compass, or GPS direction of travel.
+  const heading = follow.on && (follow.compass === 'ok' || follow.moving) ? follow.heading : null;
 
   const theme = THEMES[themeName];
   useLayoutEffect(() => applyTheme(theme), [theme]);

@@ -6,6 +6,7 @@ function statusText(follow: Follow, heading: number | null): string {
   if (follow.locationError === 'unavailable' && !follow.position)
     return 'No GPS fix · showing home';
   if (!follow.position) return 'Finding you…';
+  if (follow.moving && heading !== null) return `Heading ${bearingText(heading)} · GPS`;
   if (follow.compass === 'ok' && heading !== null) return `Facing ${bearingText(heading)}`;
   if (follow.compass === 'waiting') return 'Reading compass…';
   return 'No compass · north up';
