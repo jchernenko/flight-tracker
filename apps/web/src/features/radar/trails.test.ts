@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Aircraft } from '@flight/shared';
 import { offsetNm } from './geometry';
-import { splitPath, TrackHistory, TRAIL_SEC, trailPath } from './trails';
+import { smoothPath, TrackHistory, TRAIL_SEC, trailPath } from './trails';
 
 const center = { lat: 49.22, lon: -122.6 };
 const T0 = Date.parse('2026-10-16T12:00:00Z');
@@ -68,16 +68,18 @@ describe('comet trails', () => {
     expect(history.fixesFor('abc123')).toEqual([]);
   });
 
-  it('split into equal-length runs that join up', () => {
+  it('round off corners but keep both ends', () => {
     const path = [
       { eastNm: 0, northNm: 0 },
-      { eastNm: 3, northNm: 0 },
-      { eastNm: 3, northNm: 3 },
+      { eastNm: 4, northNm: 0 },
+      { eastNm: 4, northNm: 4 },
     ];
-    const runs = splitPath(path, 3);
-    expect(runs).toHaveLength(3);
-    expect(runs[0]).toEqual([path[0], { eastNm: 2, northNm: 0 }]);
-    expect(runs[1]).toEqual([{ eastNm: 2, northNm: 0 }, path[1], { eastNm: 3, northNm: 1 }]);
-    expect(runs[2]![runs[2]!.length - 1]).toEqual(path[2]);
+    const smooth = smoothPath(path);
+    expect(smooth[0]).toEqual(path[0]);
+    expect(smooth.at(-1)).toEqual(path[2]);
+    expect(smooth.length).toBeGreaterThan(path.length);
+    // The sharp corner at (4, 0) is cut: no point reaches it any more.
+    expect(smooth.some((p) => p.eastNm === 4 && p.northNm === 0)).toBe(false);
+    expect(smoothPath(path.slice(0, 2))).toEqual(path.slice(0, 2));
   });
 });

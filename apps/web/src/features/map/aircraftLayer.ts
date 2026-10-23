@@ -1,5 +1,5 @@
 import L from 'leaflet';
-import { distanceNm, greatCircle, type Aircraft, type LatLon } from '@flight/shared';
+import { distanceNm, type Aircraft, type LatLon } from '@flight/shared';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { STALE_AFTER_MS } from '../aircraft/status';
 import { alertRgb, altitudeRgb, type Theme } from '../../lib/theme';
@@ -12,15 +12,13 @@ import {
   type Rect,
   type TagLine,
 } from '../radar/tags';
-import { splitPath, trackHistory, trailPath } from '../radar/trails';
+import { smoothPath, trackHistory, trailPath } from '../radar/trails';
 
 /** Aircraft move this often between polls; plenty for a map, cheap for the tablet. */
 const TICK_MS = 1000;
 /** While an emergency is on screen the pulse ring animates at this rate instead. */
 const PULSE_FRAME_MS = 1000 / 15;
 const PULSE_MS = 1400;
-/** Trails are drawn as this many runs, each fainter than the one before, to fade out. */
-const TRAIL_SEGMENTS = 6;
 const HIT_RADIUS = 22;
 const GLOW_RADIUS = 14;
 /** Labels sit up and to the right of the aircraft, as the DOM markers did. */
@@ -28,7 +26,6 @@ const LABEL_DX = 12;
 const LABEL_DY = -22;
 const LABEL_LINE_H = 15;
 const MINOR_LABEL_ALPHA = 0.7;
-const ROUTE_STEP_NM = 20;
 const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 const FONTS: Record<TagLine['kind'], string> = {
   ident: '600 12px Geist, system-ui, sans-serif',
@@ -40,7 +37,7 @@ type Drawn = { a: Aircraft; x: number; y: number; rgb: string };
 
 /**
  * Every aircraft on the map, drawn on one canvas over the tiles: trails,
- * symbols, labels and the selected flight's route line. Hundreds of DOM
+ * symbols and labels. Hundreds of DOM
  * markers would be slow on the tablet at the wide ranges.
  */
 export class MapAircraftLayer {
@@ -174,7 +171,6 @@ export class MapAircraftLayer {
     ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    let selectedHere: { a: Aircraft; here: LatLon } | null = null;
     for (const a of snapshot.aircraft) {
       if (distanceNm(center, a) > this.rangeNm) continue;
       const head = deadReckon(a, center, positionAgeSec(a, snapshot.servedAt, elapsed));
@@ -182,26 +178,22 @@ export class MapAircraftLayer {
       const { x, y } = this.point(here);
       const rgb = isEmergency(a) ? alert : altitudeRgb(theme, a.onGround ? 0 : a.altitudeFt);
       this.drawn.push({ a, x, y, rgb });
-      if (a.hex === this.selected) selectedHere = { a, here };
 
-      // Through the positions it reported, so turns show, like the radar.
+      // Through the positions it reported, so turns show, rounded off and
+      // fading out in one stroke, like the radar.
       const path = trailPath(a, head, center, trackHistory.fixesFor(a.hex), nowMs);
-      ctx.strokeStyle = `rgb(${rgb})`;
-      splitPath(path, TRAIL_SEGMENTS).forEach((run, i) => {
-        if (run.length < 2) return;
-        ctx.globalAlpha = 0.85 * (1 - i / TRAIL_SEGMENTS);
-        ctx.beginPath();
-        run.forEach((o, k) => {
-          const p = this.point(toLatLon(center, o));
-          if (k === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
-        });
-        ctx.stroke();
-      });
+      if (path.length < 2) continue;
+      const points = smoothPath(path).map((o) => this.point(toLatLon(center, o)));
+      const tail = points[points.length - 1]!;
+      const grad = ctx.createLinearGradient(x, y, tail.x, tail.y);
+      grad.addColorStop(0, `rgba(${rgb},0.85)`);
+      grad.addColorStop(1, `rgba(${rgb},0)`);
+      ctx.strokeStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(points[0]!.x, points[0]!.y);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y);
+      ctx.stroke();
     }
-    ctx.globalAlpha = 1;
-
-    if (selectedHere) this.drawRoute(selectedHere.a, selectedHere.here);
 
     const t = performance.now();
     let pulsing = false;
@@ -334,59 +326,6 @@ export class MapAircraftLayer {
     ctx.shadowColor = 'transparent';
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
-  }
-
-  /**
-   * The selected flight's route: a faint solid great circle from the origin
-   * to the aircraft and a dashed one on to the destination, with both airports.
-   */
-  private drawRoute(a: Aircraft, here: LatLon): void {
-    const route = a.route;
-    const from = route?.originPos;
-    const to = route?.destinationPos;
-    if (!route || !from || !to) return;
-    const { ctx, theme } = this;
-    const stroke = (points: LatLon[], dash: number[], alpha: number) => {
-      ctx.globalAlpha = alpha;
-      ctx.setLineDash(dash);
-      ctx.beginPath();
-      points.forEach((p, i) => {
-        const { x, y } = this.point(p);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-    };
-    ctx.save();
-    ctx.strokeStyle = theme.text;
-    ctx.lineWidth = 1.5;
-    stroke(greatCircle(from, here, ROUTE_STEP_NM), [], 0.35);
-    stroke(greatCircle(here, to, ROUTE_STEP_NM), [6, 6], 0.7);
-    ctx.setLineDash([]);
-    ctx.globalAlpha = 1;
-
-    const heading = (this.heading() * Math.PI) / 180;
-    ctx.font = FONTS.altitude;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = 'left';
-    for (const [pos, code] of [
-      [from, route.origin],
-      [to, route.destination],
-    ] as const) {
-      const { x, y } = this.point(pos);
-      ctx.fillStyle = theme.bg;
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(heading);
-      ctx.fillStyle = theme.text2;
-      ctx.fillText(code, 8, 0);
-      ctx.restore();
-    }
-    ctx.restore();
   }
 
   private glow(rgb: string): HTMLCanvasElement {

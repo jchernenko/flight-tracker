@@ -136,8 +136,6 @@ describe('route lookup fallback', () => {
     destination: 'YVR',
     originCity: 'Calgary',
     destinationCity: 'Vancouver',
-    originPos: null,
-    destinationPos: null,
   };
 
   function setup(budget = Infinity) {
@@ -189,21 +187,17 @@ describe('route lookup fallback', () => {
   });
 });
 
-describe('route positions', () => {
-  it('carries airport positions for the route line, from adsbdb or the bundled table', async () => {
+describe('stale route check', () => {
+  it('uses the bundled airport table when adsbdb sends no coordinates', async () => {
     const lookup = createRouteLookup({
       fetchFn: fakeAdsbdb() as unknown as typeof fetch,
       now: () => 0,
     });
-    lookup.enrich([ac('ACA301'), ac('ACA253')]);
+    const overMontreal = { ...ac('ACA253'), lat: 45.5, lon: -73.6 };
+    lookup.enrich([overMontreal]);
     await lookup.idle();
-    const [fromAdsbdb, fromTable] = lookup.enrich([ac('ACA301'), ac('ACA253')]).map((a) => a.route);
-    expect(fromAdsbdb).toMatchObject({
-      originPos: { lat: 45.47, lon: -73.74 },
-      destinationPos: { lat: 49.19, lon: -123.18 },
-    });
-    // adsbdb sent no coordinates for Yellowknife → Vancouver.
-    expect(fromTable?.originPos?.lat).toBeCloseTo(62.46, 1);
-    expect(fromTable?.destinationPos?.lon).toBeCloseTo(-123.18, 1);
+    // Yellowknife → Vancouver can't pass over Montreal, so it's hidden.
+    expect(lookup.enrich([overMontreal])[0]?.route).toBeNull();
+    expect(lookup.enrich([ac('ACA253')])[0]?.route).toMatchObject({ origin: 'YZF' });
   });
 });

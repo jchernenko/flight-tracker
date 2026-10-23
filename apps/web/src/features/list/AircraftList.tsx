@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { Aircraft, LatLon, RangeNm } from '@flight/shared';
 import { altitudeVar } from '../../lib/theme';
 import { isEmergency, isMinor } from '../radar/tags';
@@ -38,7 +39,7 @@ export const dotStyle = (a: Aircraft, color: string) =>
     : { background: color };
 
 type ListProps = {
-  /** In range and already sorted: emergencies first, then highest first. */
+  /** In range and already sorted: the selected aircraft, emergencies, then nearest first. */
   aircraft: Aircraft[];
   home: LatLon;
   selectedHex: string | null;
@@ -47,8 +48,14 @@ type ListProps = {
 };
 
 export function AircraftList({ aircraft, home, selectedHex, onSelect, dimmed }: ListProps) {
+  // The selected aircraft is pinned first; scroll up so a tap on the map shows its row.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (selectedHex) scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [selectedHex]);
   return (
     <div
+      ref={scrollRef}
       className={`no-scrollbar -mx-1 min-h-0 flex-1 overflow-y-auto px-1 ${dimmed ? 'opacity-45' : ''}`}
     >
       {aircraft.map((a) => {

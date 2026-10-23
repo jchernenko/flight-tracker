@@ -1,18 +1,11 @@
-import { greatCircle, type Aircraft, type LatLon } from '@flight/shared';
+import type { Aircraft, LatLon } from '@flight/shared';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { STALE_AFTER_MS } from '../aircraft/status';
 import { alertRgb, altitudeRgb, type Theme } from '../../lib/theme';
-import {
-  deadReckon,
-  offsetNm,
-  positionAgeSec,
-  ringStepNm,
-  toLatLon,
-  type Offset,
-} from './geometry';
+import { deadReckon, offsetNm, positionAgeSec, ringStepNm, type Offset } from './geometry';
 import { isEmergency, isMinor, placeTag, tagLines, type Rect, type TagLine } from './tags';
 import { BORDER, LANDMARKS } from './landmarks';
-import { trackHistory, trailPath } from './trails';
+import { smoothPath, trackHistory, trailPath } from './trails';
 
 const FRAME_MS = 1000 / 30; // the tablet is slow; 30 fps is plenty for a scope
 const SANS = 'Geist, system-ui, sans-serif';
@@ -28,8 +21,6 @@ const GLOW_RADIUS = 16;
 const HIT_RADIUS = 22;
 const PULSE_MS = 1400;
 const MINOR_TAG_ALPHA = 0.7;
-/** Route lines bend every this many nm; fine enough for a curve on screen. */
-const ROUTE_STEP_NM = 10;
 const ACQUIRING_ARC_RAD = 0.7;
 const ACQUIRING_SEC_PER_RAD = 0.9;
 /** Turning the scope redraws the rings and landmarks, so ignore wobbles smaller than this. */
@@ -465,7 +456,6 @@ export class RadarRenderer {
       const { x, y } = this.toScreen(pos, scale);
       drawn.push({ track, x, y });
       this.drawTrail(track, pos, nowMs);
-      if (a.hex === this.selected) this.drawRouteLine(a, pos);
     }
     ctx.restore();
 
@@ -565,36 +555,6 @@ export class RadarRenderer {
     }
   }
 
-  /**
-   * The selected flight's route: a faint solid line from the origin to the
-   * aircraft and a dashed one on to the destination, both great circles.
-   */
-  private drawRouteLine(a: Aircraft, head: Offset): void {
-    const from = a.route?.originPos;
-    const to = a.route?.destinationPos;
-    if (!from || !to) return;
-    const { ctx, theme } = this;
-    const center = this.snapshot!.center;
-    const here = toLatLon(center, head);
-    const stroke = (points: LatLon[], dash: number[], alpha: number) => {
-      ctx.globalAlpha = alpha;
-      ctx.setLineDash(dash);
-      ctx.beginPath();
-      points.forEach((p, i) => {
-        const { x, y } = this.toScreen(offsetNm(center, p));
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-    };
-    ctx.save();
-    ctx.strokeStyle = theme.text;
-    ctx.lineWidth = 1.5;
-    stroke(greatCircle(from, here, ROUTE_STEP_NM), [], 0.25);
-    stroke(greatCircle(here, to, ROUTE_STEP_NM), [6, 6], 0.6);
-    ctx.restore();
-  }
-
   /** A comet tail fading out behind the aircraft, curving through the turns it flew. */
   private drawTrail(track: Track, head: Offset, nowMs: number): void {
     const { ctx } = this;
@@ -603,7 +563,7 @@ export class RadarRenderer {
     const path = trailPath(a, head, center, trackHistory.fixesFor(a.hex), nowMs);
     if (path.length < 2) return;
     const scale = this.pxPerNm;
-    const points = path.map((o) => this.toScreen(o, scale));
+    const points = smoothPath(path).map((o) => this.toScreen(o, scale));
     const first = points[0]!;
     const tail = points[points.length - 1]!;
 

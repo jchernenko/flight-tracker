@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import { DEFAULT_RANGE_NM, RANGES_NM, type RangeNm } from '@flight/shared';
-import { VIEWS, type View } from '../components/Controls';
+import { Controls, VIEWS, type View } from '../components/Controls';
 import { nextRange, rangeFor } from '../components/Headline';
 import { AltitudeLegend, ScopeBanners, ScopeMessage } from '../components/ScopeOverlays';
 import { SidePanel } from '../components/SidePanel';
@@ -52,7 +52,7 @@ export function DisplayPage() {
   useLayoutEffect(() => applyTheme(theme), [theme]);
 
   const status = statusFor(data, isPending, isError);
-  const inRange = data ? sortForList(aircraftInRange(data, rangeNm)) : null;
+  const inRange = data ? aircraftInRange(data, rangeNm) : null;
   const emergencies = inRange?.filter(isEmergency) ?? [];
   const cycleRange = () => setRangeNm(nextRangeNm);
 
@@ -64,6 +64,8 @@ export function DisplayPage() {
     if (selectedHex !== selected) setSelectedHex(selected);
   }, [selectedHex, selected]);
   const select = (hex: string | null) => setSelectedHex(selectable(hex) ? hex : null);
+  // Nearest first; a selected aircraft jumps to the top until it's deselected.
+  const listed = data && inRange ? sortForList(inRange, data.center, selected) : null;
 
   const shared = {
     view,
@@ -76,7 +78,7 @@ export function DisplayPage() {
     status,
     feed: info?.feed,
     place: follow.position ? 'Your location' : info?.place,
-    aircraft: inRange,
+    aircraft: listed,
   };
 
   if (view === 'board') {
@@ -97,7 +99,17 @@ export function DisplayPage() {
 
   return (
     <main className="relative h-full w-full">
-      <section className="absolute inset-y-0 left-0 right-[400px] overflow-hidden max-md:right-0 max-md:bottom-[45%]">
+      {/* View and theme switches sit in a bar above the scope or map. */}
+      <div className="absolute top-0 left-0 right-[400px] flex h-[66px] items-center px-4 max-md:right-0">
+        <Controls
+          view={view}
+          onSelectView={setView}
+          theme={themeName}
+          onSelectTheme={setThemeName}
+          className="w-[460px] max-md:w-full"
+        />
+      </div>
+      <section className="absolute top-[66px] bottom-0 left-0 right-[400px] overflow-hidden max-md:right-0 max-md:bottom-[45%]">
         {view === 'radar' ? (
           <RadarScope
             snapshot={data}

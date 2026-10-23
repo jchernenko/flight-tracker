@@ -91,12 +91,18 @@ const SQUAWK_MEANINGS: Record<string, string> = {
 export const squawkMeaning = (squawk: string | null): string =>
   (squawk && SQUAWK_MEANINGS[squawk]) ?? 'emergency';
 
-/** Emergencies first, then highest first; ground and unknown altitudes last. */
-export function sortForList(aircraft: Aircraft[]): Aircraft[] {
-  const height = (a: Aircraft) => (a.onGround ? -1 : (a.altitudeFt ?? -1));
-  return [...aircraft].sort(
-    (a, b) => Number(isEmergency(b)) - Number(isEmergency(a)) || height(b) - height(a),
-  );
+/**
+ * The selected aircraft pinned on top, then emergencies, then nearest first,
+ * measured from `from` (home, or the phone in follow mode).
+ */
+export function sortForList(
+  aircraft: Aircraft[],
+  from: LatLon,
+  pinnedHex: string | null = null,
+): Aircraft[] {
+  const rank = (a: Aircraft) => (a.hex === pinnedHex ? 2 : isEmergency(a) ? 1 : 0);
+  const dist = new Map(aircraft.map((a) => [a.hex, distanceNm(from, a)]));
+  return [...aircraft].sort((a, b) => rank(b) - rank(a) || dist.get(a.hex)! - dist.get(b.hex)!);
 }
 
 /** 24-hour "08:16", or with seconds "08:16:05". */

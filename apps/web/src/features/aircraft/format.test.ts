@@ -33,8 +33,6 @@ const route = {
   destination: 'YVR',
   originCity: 'Calgary',
   destinationCity: null,
-  originPos: null,
-  destinationPos: null,
 };
 
 describe('format', () => {
@@ -72,13 +70,23 @@ describe('format', () => {
     expect(whereText({ lat: 49.22, lon: -122.6 }, ac({ lon: -122.35 }))).toBe('9.8 nm E of you');
   });
 
-  it('pins emergencies first, then sorts highest first with ground traffic last', () => {
-    const list = sortForList([
-      ac({ hex: 'low', altitudeFt: 2000 }),
-      ac({ hex: 'gnd', onGround: true, altitudeFt: null }),
-      ac({ hex: 'high', altitudeFt: 38000 }),
-      ac({ hex: 'sos', altitudeFt: 5000, squawk: '7700' }),
+  it('sorts nearest first, with emergencies and then the selected aircraft pinned on top', () => {
+    const home = { lat: 49.22, lon: -122.6 };
+    const aircraft = [
+      ac({ hex: 'far', lat: 49.6 }),
+      ac({ hex: 'near', lat: 49.23 }),
+      ac({ hex: 'mid', lat: 49.4 }),
+      ac({ hex: 'sos', lat: 49.8, squawk: '7700' }),
+    ];
+    expect(sortForList(aircraft, home).map((a) => a.hex)).toEqual(['sos', 'near', 'mid', 'far']);
+    expect(sortForList(aircraft, home, 'far').map((a) => a.hex)).toEqual([
+      'far',
+      'sos',
+      'near',
+      'mid',
     ]);
-    expect(list.map((a) => a.hex)).toEqual(['sos', 'high', 'low', 'gnd']);
+    // In follow mode distances are from the phone.
+    const phone = { lat: 49.6, lon: -122.6 };
+    expect(sortForList(aircraft, phone).map((a) => a.hex)).toEqual(['sos', 'far', 'mid', 'near']);
   });
 });

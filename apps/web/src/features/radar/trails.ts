@@ -95,40 +95,27 @@ export function trailPath(
   return path;
 }
 
-/** Splits a path into `n` runs of equal length, for trails drawn as fading segments. */
-export function splitPath(path: readonly Offset[], n: number): Offset[][] {
-  const lengths = path.slice(1).map((p, i) => dist(path[i]!, p));
-  const total = lengths.reduce((sum, l) => sum + l, 0);
-  if (path.length < 2 || total === 0) return Array.from({ length: n }, () => []);
-  const runs: Offset[][] = [];
-  let seg = 0;
-  let along = 0; // distance into segment `seg`
-  let start = path[0]!;
-  for (let k = 1; k <= n; k++) {
-    const run = [start];
-    let need = total / n;
-    while (seg < lengths.length) {
-      const left = lengths[seg]! - along;
-      if (need < left || (k === n && seg === lengths.length - 1)) {
-        along += Math.min(need, left);
-        const f = lengths[seg]! === 0 ? 1 : along / lengths[seg]!;
-        const from = path[seg]!;
-        const to = path[seg + 1]!;
-        start = {
-          eastNm: from.eastNm + (to.eastNm - from.eastNm) * f,
-          northNm: from.northNm + (to.northNm - from.northNm) * f,
-        };
-        run.push(start);
-        break;
-      }
-      need -= left;
-      seg++;
-      along = 0;
-      run.push(path[seg]!);
+/**
+ * Rounds off the corners of a trail with Chaikin's corner cutting, keeping
+ * both ends where they are, so the jitter between reported positions and the
+ * turns between them read as one smooth curve.
+ */
+export function smoothPath(path: readonly Offset[], passes = 2): Offset[] {
+  let points = [...path];
+  for (let pass = 0; pass < passes && points.length > 2; pass++) {
+    const next: Offset[] = [points[0]!];
+    for (let i = 0; i < points.length - 1; i++) {
+      const p = points[i]!;
+      const q = points[i + 1]!;
+      const at = (f: number) => ({
+        eastNm: p.eastNm + (q.eastNm - p.eastNm) * f,
+        northNm: p.northNm + (q.northNm - p.northNm) * f,
+      });
+      if (i > 0) next.push(at(0.25));
+      if (i < points.length - 2) next.push(at(0.75));
     }
-    runs.push(run);
+    next.push(points[points.length - 1]!);
+    points = next;
   }
-  return runs;
+  return points;
 }
-
-const dist = (a: Offset, b: Offset) => Math.hypot(a.eastNm - b.eastNm, a.northNm - b.northNm);

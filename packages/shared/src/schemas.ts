@@ -1,7 +1,5 @@
 import { z } from 'zod';
 
-const latLonSchema = z.object({ lat: z.number(), lon: z.number() });
-
 export const routeSchema = z.object({
   /** Airport codes, IATA where known ("YVR"), else ICAO ("CYVR"). */
   origin: z.string(),
@@ -9,9 +7,6 @@ export const routeSchema = z.object({
   /** City names for display ("Vancouver"), null when unknown. */
   originCity: z.string().nullable(),
   destinationCity: z.string().nullable(),
-  /** Airport positions, for drawing the route line. Null when unknown. */
-  originPos: latLonSchema.nullable(),
-  destinationPos: latLonSchema.nullable(),
 });
 
 export const aircraftKindSchema = z.enum(['airline', 'charter', 'private', 'helicopter']);

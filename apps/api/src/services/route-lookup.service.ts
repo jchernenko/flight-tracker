@@ -137,8 +137,6 @@ export function createRouteLookup(
               destination: to,
               originCity: airportCity(from) ?? origin.municipality ?? null,
               destinationCity: airportCity(to) ?? destination.municipality ?? null,
-              originPos: fromPos,
-              destinationPos: toPos,
             }
           : null;
       remember(

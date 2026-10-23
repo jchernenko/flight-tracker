@@ -1,12 +1,6 @@
 import type { Aircraft } from '@flight/shared';
 import type { FeedProvider } from './types.js';
-import {
-  aircraftKind,
-  airportCity,
-  airportPos,
-  parseCallsign,
-  typeName,
-} from '../../utils/lookups.js';
+import { aircraftKind, airportCity, parseCallsign, typeName } from '../../utils/lookups.js';
 
 type DemoTrack = {
   hex: string;
@@ -81,8 +75,6 @@ export function createDemoProvider(now: () => number = Date.now): FeedProvider {
                 destination: track.route[1],
                 originCity: airportCity(track.route[0]),
                 destinationCity: airportCity(track.route[1]),
-                originPos: airportPos(track.route[0]),
-                destinationPos: airportPos(track.route[1]),
               }
             : null,
           seenAt: new Date(now()).toISOString(),
