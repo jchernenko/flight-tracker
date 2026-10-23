@@ -95,6 +95,7 @@ export function FlightMap({
   const tilesRef = useRef<L.TileLayer[]>([]);
   const rangeRef = useRef<L.Circle | null>(null);
   const homeRef = useRef<L.CircleMarker | null>(null);
+  const facingRef = useRef<L.Marker | null>(null);
   const entriesRef = useRef(new Map<string, Entry>());
   const snapshotRef = useRef<AircraftSnapshot | undefined>(undefined);
   const syncedRef = useRef<string | null>(null);
@@ -158,6 +159,7 @@ export function FlightMap({
       mapRef.current = null;
       rangeRef.current = null;
       homeRef.current = null;
+      facingRef.current = null;
       tilesRef.current = [];
       entries.clear();
       snapshotRef.current = undefined;
@@ -182,6 +184,20 @@ export function FlightMap({
     });
     if (rotating) map.dragging.disable();
     else map.dragging.enable();
+    // An arrowhead on your position, pointing the way you face (screen-up).
+    if (rotating && !facingRef.current) {
+      const at = homeRef.current?.getLatLng();
+      if (at) {
+        facingRef.current = L.marker(at, {
+          icon: L.divIcon({ className: 'you-facing', html: '<div></div>', iconSize: [0, 0] }),
+          interactive: false,
+          keyboard: false,
+        }).addTo(map);
+      }
+    } else if (!rotating && facingRef.current) {
+      facingRef.current.remove();
+      facingRef.current = null;
+    }
     if (!heading) {
       el.style.removeProperty('--map-heading');
       return;
@@ -197,6 +213,7 @@ export function FlightMap({
     if (!map || !circle || !center) return;
     circle.setLatLng([center.lat, center.lon]);
     homeRef.current?.setLatLng([center.lat, center.lon]);
+    facingRef.current?.setLatLng([center.lat, center.lon]);
     circle.setRadius(rangeNm * NM_TO_M);
     // Fit the range circle to what's visible, not to the oversized square when turned.
     const outer = outerRef.current;

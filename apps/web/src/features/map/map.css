@@ -33,6 +33,24 @@ html[data-theme='light'] .flight-map .leaflet-tile-pane {
 .flight-map-rotating .ac-hit {
   transform: rotate(var(--map-heading, 0deg));
 }
+/* Arrowhead just above your position, turned back so it always points screen-up. */
+.you-facing div {
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  width: 12px;
+  height: 12px;
+  transform: rotate(var(--map-heading, 0deg));
+}
+.you-facing div::before {
+  content: '';
+  position: absolute;
+  left: 0.5px;
+  top: -11px;
+  border-left: 5.5px solid transparent;
+  border-right: 5.5px solid transparent;
+  border-bottom: 9px solid var(--color-text);
+}
 .map-attribution {
   position: absolute;
   right: 0;

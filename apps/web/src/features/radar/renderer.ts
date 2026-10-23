@@ -295,6 +295,17 @@ export class RadarRenderer {
     g.beginPath();
     g.arc(cx, cy, 5, 0, Math.PI * 2);
     g.stroke();
+
+    // Heading-up: an arrowhead on your position, pointing the way you face.
+    if (this.heading !== null) {
+      g.fillStyle = theme.text;
+      g.beginPath();
+      g.moveTo(cx, cy - 17);
+      g.lineTo(cx + 5.5, cy - 8);
+      g.lineTo(cx - 5.5, cy - 8);
+      g.closePath();
+      g.fill();
+    }
   }
 
   /** Heading-up: a faint wedge for what's in front of you, and the heading above the scope. */
