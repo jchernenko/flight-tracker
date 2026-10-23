@@ -23,6 +23,8 @@ type Props = {
   theme: ThemeName;
   onSelectTheme: (theme: ThemeName) => void;
   rangeNm: RangeNm;
+  /** What tapping the range changes it to. */
+  nextRangeNm: RangeNm;
   onCycleRange: () => void;
   clock: string;
   status: Status;
@@ -66,7 +68,11 @@ export function FlightBoard(props: Props) {
           </Grid>
         ) : aircraft && aircraft.length === 0 ? (
           <div className="flex h-full items-center justify-center rounded-[16px] border border-line">
-            <NothingOverhead rangeNm={props.rangeNm} onCycleRange={props.onCycleRange} />
+            <NothingOverhead
+              rangeNm={props.rangeNm}
+              nextRangeNm={props.nextRangeNm}
+              onCycleRange={props.onCycleRange}
+            />
           </div>
         ) : aircraft ? (
           <Grid count={aircraft.length} dimmed={status.kind === 'stale'}>

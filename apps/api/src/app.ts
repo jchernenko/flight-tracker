@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { compress } from 'hono/compress';
 import type { Health } from '@flight/shared';
 import type { AircraftService } from './services/aircraft.service.js';
 import { aircraftRoutes } from './routes/aircraft.js';
@@ -12,6 +13,8 @@ export type AppDeps = {
 
 export function createApp({ aircraftService, info }: AppDeps) {
   const app = new Hono()
+    // A 250 nm picture is a few hundred aircraft; gzip shrinks it several times over.
+    .use('/api/*', compress())
     .get('/api/health', (c) =>
       c.json({ success: true as const, data: { ok: true as const, ...info } satisfies Health }),
     )

@@ -7,7 +7,9 @@ export type ApiFailure = { success: false; error: string };
 export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
 
 /** Scope ranges the display cycles through, in nautical miles. */
-export const RANGES_NM = [10, 20, 30, 60] as const;
+export const RANGES_NM = [10, 20, 30, 60, 120, 250] as const;
+/** The radar scope and the board stop here; only the map goes wider. */
+export const SCOPE_MAX_RANGE_NM = 60;
 export type RangeNm = (typeof RANGES_NM)[number];
 export const DEFAULT_RANGE_NM: RangeNm = 30;
 

@@ -12,6 +12,8 @@ type Props = {
   theme: ThemeName;
   onSelectTheme: (theme: ThemeName) => void;
   rangeNm: RangeNm;
+  /** What tapping the range changes it to. */
+  nextRangeNm: RangeNm;
   onCycleRange: () => void;
   clock: string;
   status: Status;
@@ -54,7 +56,11 @@ export function SidePanel(props: Props) {
         <SkeletonRows />
       ) : aircraft && home ? (
         aircraft.length === 0 ? (
-          <NothingOverhead rangeNm={props.rangeNm} onCycleRange={props.onCycleRange} />
+          <NothingOverhead
+            rangeNm={props.rangeNm}
+            nextRangeNm={props.nextRangeNm}
+            onCycleRange={props.onCycleRange}
+          />
         ) : (
           <AircraftList
             aircraft={aircraft}

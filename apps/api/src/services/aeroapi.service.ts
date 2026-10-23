@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Route } from '@flight/shared';
-import { airportCity } from '../utils/lookups.js';
+import { airportCity, airportPos } from '../utils/lookups.js';
 import { USER_AGENT } from './providers/http.js';
 
 // FlightAware AeroAPI has the filed flight plan, so it knows routes adsbdb's
@@ -100,6 +100,8 @@ export function createAeroApiFallback(options: {
         destination: to,
         originCity: airportCity(from) ?? airborne.origin?.city ?? null,
         destinationCity: airportCity(to) ?? airborne.destination?.city ?? null,
+        originPos: airportPos(from),
+        destinationPos: airportPos(to),
       };
     },
   };

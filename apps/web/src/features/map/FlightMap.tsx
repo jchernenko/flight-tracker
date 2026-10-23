@@ -2,20 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import './map.css';
-import { distanceNm, type Aircraft } from '@flight/shared';
 import type { AircraftSnapshot } from '../aircraft/useAircraft';
-import { STALE_AFTER_MS } from '../aircraft/status';
-import { alertRgb, altitudeHue, altitudeRgb, type Theme } from '../../lib/theme';
-import { deadReckon, positionAgeSec, toLatLon } from '../radar/geometry';
-import { isEmergency, isMinor, overlapsAny, tagLines, type Rect } from '../radar/tags';
-import { splitPath, trackHistory, trailPath } from '../radar/trails';
+import type { Theme } from '../../lib/theme';
 import type { HeadingStore } from '../follow/useFollowMe';
+import { MapAircraftLayer } from './aircraftLayer';
 
 const NM_TO_M = 1852;
-/** Markers move this often between polls; plenty for a map, cheap for the tablet. */
-const TICK_MS = 1000;
-/** Trails are drawn as this many runs, each fainter than the one before, to fade out. */
-const TRAIL_SEGMENTS = 6;
+/** How often labels are turned upright again while the map turns heading-up. */
+const LABEL_TURN_MS = 1000 / 15;
 
 const ESRI = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas';
 const ATTRIBUTION =
@@ -37,35 +31,6 @@ function tileLayers(theme: Theme): L.TileLayer[] {
 /** Square bounds around the range circle. (Circle.getBounds needs a map view to exist first.) */
 const rangeBounds = (lat: number, lon: number, rangeNm: number) =>
   L.latLng(lat, lon).toBounds(rangeNm * NM_TO_M * 2);
-
-// Callsigns and registrations come from the feed, so escape them before they go into HTML.
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (ch) => `&#${ch.charCodeAt(0)};`);
-
-function iconFor(a: Aircraft, selected: boolean): L.DivIcon {
-  const classes = ['ac'];
-  if (isEmergency(a)) classes.push('ac-alert');
-  else if (a.military) classes.push('ac-mil');
-  else if (a.kind === 'helicopter') classes.push('ac-heli');
-  else if (isMinor(a)) classes.push('ac-ring');
-  if (isMinor(a) && !isEmergency(a)) classes.push('ac-minor');
-  if (selected) classes.push('ac-selected');
-  const hue = altitudeHue(a.onGround ? 0 : a.altitudeFt).toFixed(1);
-  const lines = tagLines(a)
-    .map((line) => {
-      const text = escapeHtml(line.text);
-      return line.kind === 'ident'
-        ? `<b>${text}</b>`
-        : `<span class="ac-${line.kind}">${text}</span>`;
-    })
-    .join('');
-  return L.divIcon({
-    className: classes.join(' '),
-    html: `<div class="ac-hit" style="--h:${hue}"><div class="ac-dot"></div><div class="ac-label">${lines}</div></div>`,
-    iconSize: [0, 0],
-  });
-}
-
-type Entry = { marker: L.Marker; aircraft: Aircraft; trail: L.Polyline[] };
 
 type Props = {
   snapshot: AircraftSnapshot | undefined;
@@ -96,17 +61,13 @@ export function FlightMap({
   const rangeRef = useRef<L.Circle | null>(null);
   const homeRef = useRef<L.CircleMarker | null>(null);
   const facingRef = useRef<L.Marker | null>(null);
-  const entriesRef = useRef(new Map<string, Entry>());
-  const snapshotRef = useRef<AircraftSnapshot | undefined>(undefined);
-  const syncedRef = useRef<string | null>(null);
+  const layerRef = useRef<MapAircraftLayer | null>(null);
   const themeRef = useRef(theme);
-  const selectedRef = useRef(selectedHex);
   const onSelectRef = useRef(onSelect);
-  const staleRef = useRef(stale);
-  const frozenElapsedRef = useRef<number | null>(null);
+  const headingRef = useRef(heading);
   themeRef.current = theme;
   onSelectRef.current = onSelect;
-  staleRef.current = stale;
+  headingRef.current = heading;
 
   // Create the map once the centre is known. In follow mode the centre moves with the phone.
   const center = snapshot?.center;
@@ -149,21 +110,23 @@ export function FlightMap({
       fill: false,
       interactive: false,
     }).addTo(map);
-    map.on('click', () => onSelectRef.current(null));
-    map.on('zoomend', () => moveAll());
     mapRef.current = map;
+    layerRef.current = new MapAircraftLayer(
+      map,
+      t,
+      () => headingRef.current?.get() ?? 0,
+      (hex) => onSelectRef.current(hex),
+    );
 
-    const entries = entriesRef.current;
     return () => {
+      layerRef.current?.remove();
+      layerRef.current = null;
       map.remove();
       mapRef.current = null;
       rangeRef.current = null;
       homeRef.current = null;
       facingRef.current = null;
       tilesRef.current = [];
-      entries.clear();
-      snapshotRef.current = undefined;
-      syncedRef.current = null;
     };
     // Created once; the centre, range, theme and data go through the effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,9 +165,21 @@ export function FlightMap({
       el.style.removeProperty('--map-heading');
       return;
     }
-    const update = () => el.style.setProperty('--map-heading', `${heading.get() ?? 0}deg`);
+    // Labels on the canvas are turned back upright as it draws; a few times a second is enough.
+    let pending = 0;
+    const update = () => {
+      el.style.setProperty('--map-heading', `${heading.get() ?? 0}deg`);
+      pending ||= window.setTimeout(() => {
+        pending = 0;
+        layerRef.current?.redraw();
+      }, LABEL_TURN_MS);
+    };
     update();
-    return heading.subscribe(update);
+    const unsubscribe = heading.subscribe(update);
+    return () => {
+      unsubscribe();
+      window.clearTimeout(pending);
+    };
   }, [heading, rotating, hasCenter, diagonal]);
 
   useEffect(() => {
@@ -236,142 +211,16 @@ export function FlightMap({
     tilesRef.current = tileLayers(theme).map((layer) => layer.addTo(map));
     homeRef.current?.setStyle({ color: theme.text });
     rangeRef.current?.setStyle({ color: theme.text });
-    for (const { aircraft, trail } of entriesRef.current.values()) {
-      const color = trailColor(theme, aircraft);
-      for (const line of trail) line.setStyle({ color });
-    }
+    layerRef.current?.setTheme(theme);
   }, [theme, hasCenter]);
 
-  // Sync markers with each new picture, and with the range: only aircraft in
-  // range are shown, like the radar and the list, so every marker can be selected.
+  // Only aircraft in range are drawn, like the radar and the list, so every one can be selected.
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !snapshot) return;
-    const key = `${snapshot.fetchedAt}|${rangeNm}`;
-    if (syncedRef.current === key) return;
-    syncedRef.current = key;
-    if (snapshotRef.current?.fetchedAt !== snapshot.fetchedAt) frozenElapsedRef.current = null;
-    snapshotRef.current = snapshot;
-
-    const entries = entriesRef.current;
-    const seen = new Set<string>();
-    for (const a of snapshot.aircraft) {
-      if (distanceNm(snapshot.center, a) > rangeNm) continue;
-      seen.add(a.hex);
-      const icon = iconFor(a, a.hex === selectedRef.current);
-      const color = trailColor(themeRef.current, a);
-      const existing = entries.get(a.hex);
-      if (existing) {
-        existing.aircraft = a;
-        existing.marker.setIcon(icon);
-        for (const line of existing.trail) line.setStyle({ color });
-      } else {
-        const marker = L.marker([a.lat, a.lon], { icon, keyboard: false }).addTo(map);
-        marker.on('click', (e) => {
-          L.DomEvent.stopPropagation(e);
-          onSelectRef.current(selectedRef.current === a.hex ? null : a.hex);
-        });
-        const trail = Array.from({ length: TRAIL_SEGMENTS }, (_, i) =>
-          L.polyline([], {
-            color,
-            weight: 2.5,
-            lineCap: 'round',
-            opacity: 0.85 * (1 - i / TRAIL_SEGMENTS),
-            interactive: false,
-          }).addTo(map),
-        );
-        entries.set(a.hex, { marker, aircraft: a, trail });
-      }
-    }
-    for (const [hex, { marker, trail }] of entries) {
-      if (!seen.has(hex)) {
-        marker.remove();
-        for (const line of trail) line.remove();
-        entries.delete(hex);
-      }
-    }
-    moveAll();
+    if (snapshot) layerRef.current?.setSnapshot(snapshot, rangeNm);
   }, [snapshot, rangeNm, hasCenter]);
 
-  // Selection only changes the marker classes.
-  useEffect(() => {
-    const previous = selectedRef.current;
-    selectedRef.current = selectedHex;
-    for (const hex of [previous, selectedHex]) {
-      const entry = hex ? entriesRef.current.get(hex) : undefined;
-      if (entry) entry.marker.setIcon(iconFor(entry.aircraft, entry.aircraft.hex === selectedHex));
-    }
-    // A new icon shows its label again; settle which labels fit.
-    moveAll();
-  }, [selectedHex]);
-
-  /** Dead-reckons markers and trails between polls, like the radar; frozen while stale. */
-  function moveAll() {
-    const snap = snapshotRef.current;
-    if (!snap) return;
-    let elapsed = performance.now() - snap.receivedAt;
-    if (staleRef.current || snap.stale || elapsed > STALE_AFTER_MS) {
-      frozenElapsedRef.current ??= Math.min(elapsed, STALE_AFTER_MS);
-    }
-    // Frozen until a new picture arrives, so markers don't jump ahead.
-    if (frozenElapsedRef.current !== null) elapsed = frozenElapsedRef.current;
-    const nowMs = Date.parse(snap.servedAt) + elapsed;
-    for (const { marker, aircraft: a, trail } of entriesRef.current.values()) {
-      const head = deadReckon(a, snap.center, positionAgeSec(a, snap.servedAt, elapsed));
-      const pos = toLatLon(snap.center, head);
-      marker.setLatLng([pos.lat, pos.lon]);
-
-      // Through the positions it reported, so turns show, like the radar.
-      const path = trailPath(a, head, snap.center, trackHistory.fixesFor(a.hex), nowMs);
-      const runs = splitPath(path, TRAIL_SEGMENTS);
-      trail.forEach((line, i) => {
-        line.setLatLngs(
-          (runs[i] ?? []).map((o) => {
-            const p = toLatLon(snap.center, o);
-            return [p.lat, p.lon] as [number, number];
-          }),
-        );
-      });
-    }
-    declutter(snap);
-  }
-
-  /**
-   * Hides labels that would overlap one already shown, like the radar, so the
-   * selected aircraft, emergencies and the nearest traffic stay readable.
-   * Measured on screen, so it holds when the map is turned in follow mode.
-   */
-  function declutter(snap: AircraftSnapshot) {
-    const labels = [...entriesRef.current.values()]
-      .map(({ marker, aircraft: a }) => {
-        const label = marker.getElement()?.querySelector<HTMLElement>('.ac-label');
-        const forced = a.hex === selectedRef.current || isEmergency(a);
-        const rank =
-          a.hex === selectedRef.current ? -2 : isEmergency(a) ? -1 : distanceNm(snap.center, a);
-        return { label, forced, rank };
-      })
-      .filter((l): l is typeof l & { label: HTMLElement } => l.label != null)
-      .sort((a, b) => a.rank - b.rank);
-    // Read every rect before changing any style, so the browser lays out once.
-    const rects = labels.map(({ label }) => {
-      const r = label.getBoundingClientRect();
-      return { x: r.left, y: r.top, w: r.width, h: r.height };
-    });
-    const placed: Rect[] = [];
-    labels.forEach(({ label, forced }, i) => {
-      const rect = rects[i]!;
-      const show = forced || !overlapsAny(rect, placed);
-      if (show) placed.push(rect);
-      label.style.visibility = show ? '' : 'hidden';
-    });
-  }
-
-  useEffect(() => {
-    const id = window.setInterval(moveAll, TICK_MS);
-    return () => window.clearInterval(id);
-    // moveAll only reads refs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => layerRef.current?.setSelected(selectedHex), [selectedHex, hasCenter]);
+  useEffect(() => layerRef.current?.setStale(stale), [stale, hasCenter]);
 
   return (
     <div ref={outerRef} className="relative h-full w-full overflow-hidden">
@@ -391,6 +240,3 @@ export function FlightMap({
     </div>
   );
 }
-
-const trailColor = (theme: Theme, a: Aircraft): string =>
-  `rgb(${isEmergency(a) ? alertRgb(theme) : altitudeRgb(theme, a.onGround ? 0 : a.altitudeFt)})`;

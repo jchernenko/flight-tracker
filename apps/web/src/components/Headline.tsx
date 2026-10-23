@@ -1,7 +1,20 @@
-import { RANGES_NM, type RangeNm } from '@flight/shared';
+import { RANGES_NM, SCOPE_MAX_RANGE_NM, type RangeNm } from '@flight/shared';
+import type { View } from './Controls';
 
-export const nextRange = (rangeNm: RangeNm): RangeNm =>
-  RANGES_NM[(RANGES_NM.indexOf(rangeNm) + 1) % RANGES_NM.length]!;
+/** Ranges a view cycles through: the map goes out to 250 nm, the radar and board stop at 60. */
+export const rangesFor = (view: View): RangeNm[] =>
+  view === 'map' ? [...RANGES_NM] : RANGES_NM.filter((r) => r <= SCOPE_MAX_RANGE_NM);
+
+/** The stored range as this view shows it: capped at the view's widest. */
+export const rangeFor = (rangeNm: RangeNm, view: View): RangeNm => {
+  const ranges = rangesFor(view);
+  return ranges.includes(rangeNm) ? rangeNm : ranges[ranges.length - 1]!;
+};
+
+export const nextRange = (rangeNm: RangeNm, view: View): RangeNm => {
+  const ranges = rangesFor(view);
+  return ranges[(ranges.indexOf(rangeNm) + 1) % ranges.length]!;
+};
 
 type Props = {
   count: number | null;

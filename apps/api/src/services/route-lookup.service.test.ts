@@ -69,7 +69,7 @@ describe('route lookup', () => {
     expect(looked).toEqual(['ACA253', 'JZA1', 'WJA9']);
 
     const second = lookup.enrich([ac('ACA253'), ac('WJA9'), ac('JZA1')]);
-    expect(second.map((a) => a.route)).toEqual([
+    expect(second.map((a) => a.route)).toMatchObject([
       {
         origin: 'YZF',
         destination: 'YVR',
@@ -90,7 +90,7 @@ describe('route lookup', () => {
     });
     lookup.enrich([ac('ASA12')]);
     await lookup.idle();
-    expect(lookup.enrich([ac('ASA12')])[0]?.route).toEqual({
+    expect(lookup.enrich([ac('ASA12')])[0]?.route).toMatchObject({
       origin: 'KSEA',
       destination: 'XYZ',
       originCity: 'Seattle',
@@ -136,6 +136,8 @@ describe('route lookup fallback', () => {
     destination: 'YVR',
     originCity: 'Calgary',
     destinationCity: 'Vancouver',
+    originPos: null,
+    destinationPos: null,
   };
 
   function setup(budget = Infinity) {
@@ -184,5 +186,24 @@ describe('route lookup fallback', () => {
     lookup.enrich(picture);
     await lookup.idle();
     expect(fallback.find.mock.calls.map(([c]) => c)).toEqual(['WJA10']);
+  });
+});
+
+describe('route positions', () => {
+  it('carries airport positions for the route line, from adsbdb or the bundled table', async () => {
+    const lookup = createRouteLookup({
+      fetchFn: fakeAdsbdb() as unknown as typeof fetch,
+      now: () => 0,
+    });
+    lookup.enrich([ac('ACA301'), ac('ACA253')]);
+    await lookup.idle();
+    const [fromAdsbdb, fromTable] = lookup.enrich([ac('ACA301'), ac('ACA253')]).map((a) => a.route);
+    expect(fromAdsbdb).toMatchObject({
+      originPos: { lat: 45.47, lon: -73.74 },
+      destinationPos: { lat: 49.19, lon: -123.18 },
+    });
+    // adsbdb sent no coordinates for Yellowknife → Vancouver.
+    expect(fromTable?.originPos?.lat).toBeCloseTo(62.46, 1);
+    expect(fromTable?.destinationPos?.lon).toBeCloseTo(-123.18, 1);
   });
 });

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { distanceNm, type Aircraft, type LatLon, type Route } from '@flight/shared';
-import { airportCity, isAirlineCallsign } from '../utils/lookups.js';
+import { airportCity, airportPos, isAirlineCallsign } from '../utils/lookups.js';
 import { USER_AGENT } from './providers/http.js';
 import type { RouteFallback } from './aeroapi.service.js';
 
@@ -128,6 +128,8 @@ export function createRouteLookup(
       const { origin, destination } = body.response.flightroute;
       const from = origin.iata_code || origin.icao_code;
       const to = destination.iata_code || destination.icao_code;
+      const fromPos = latLon(origin) ?? (from ? airportPos(from) : null);
+      const toPos = latLon(destination) ?? (to ? airportPos(to) : null);
       const route: Route | null =
         from && to
           ? {
@@ -135,10 +137,10 @@ export function createRouteLookup(
               destination: to,
               originCity: airportCity(from) ?? origin.municipality ?? null,
               destinationCity: airportCity(to) ?? destination.municipality ?? null,
+              originPos: fromPos,
+              destinationPos: toPos,
             }
           : null;
-      const fromPos = latLon(origin);
-      const toPos = latLon(destination);
       remember(
         callsign,
         route,

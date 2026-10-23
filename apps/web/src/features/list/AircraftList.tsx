@@ -1,7 +1,6 @@
 import type { Aircraft, LatLon, RangeNm } from '@flight/shared';
 import { altitudeVar } from '../../lib/theme';
 import { isEmergency, isMinor } from '../radar/tags';
-import { nextRange } from '../../components/Headline';
 import {
   altitudeText,
   detailFooter,
@@ -211,11 +210,10 @@ export function SkeletonRows() {
   );
 }
 
-type EmptyProps = { rangeNm: RangeNm; onCycleRange: () => void };
+type EmptyProps = { rangeNm: RangeNm; nextRangeNm: RangeNm; onCycleRange: () => void };
 
 /** Nothing in range: says so, and offers a wider range when there is one. */
-export function NothingOverhead({ rangeNm, onCycleRange }: EmptyProps) {
-  const wider = nextRange(rangeNm);
+export function NothingOverhead({ rangeNm, nextRangeNm: wider, onCycleRange }: EmptyProps) {
   return (
     <div className="flex flex-col gap-2 pt-4">
       <h2 className="text-[20px] font-semibold">Nothing overhead right now</h2>

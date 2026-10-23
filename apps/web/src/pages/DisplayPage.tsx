@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useState } from 'react';
 import { DEFAULT_RANGE_NM, RANGES_NM, type RangeNm } from '@flight/shared';
 import { VIEWS, type View } from '../components/Controls';
-import { nextRange } from '../components/Headline';
+import { nextRange, rangeFor } from '../components/Headline';
 import { AltitudeLegend, ScopeBanners, ScopeMessage } from '../components/ScopeOverlays';
 import { SidePanel } from '../components/SidePanel';
 import { useAircraft } from '../features/aircraft/useAircraft';
@@ -31,12 +31,15 @@ const parseTheme = (raw: string): ThemeName | null => THEME_NAMES.find((t) => t 
 export function DisplayPage() {
   useWakeLock();
   const now = useNow();
-  const [rangeNm, setRangeNm] = usePersistentState<RangeNm>(
+  const [storedRange, setRangeNm] = usePersistentState<RangeNm>(
     'range-nm',
     DEFAULT_RANGE_NM,
     parseRange,
   );
   const [view, setView] = usePersistentState<View>('view', 'radar', parseView);
+  // A wide map range shows as 60 nm on the radar and board, and comes back on the map.
+  const rangeNm = rangeFor(storedRange, view);
+  const nextRangeNm = nextRange(rangeNm, view);
   const [themeName, setThemeName] = usePersistentState<ThemeName>('theme', 'dark', parseTheme);
   const [selectedHex, setSelectedHex] = useState<string | null>(null);
   const follow = useFollowMe();
@@ -51,7 +54,7 @@ export function DisplayPage() {
   const status = statusFor(data, isPending, isError);
   const inRange = data ? sortForList(aircraftInRange(data, rangeNm)) : null;
   const emergencies = inRange?.filter(isEmergency) ?? [];
-  const cycleRange = () => setRangeNm(nextRange(rangeNm));
+  const cycleRange = () => setRangeNm(nextRangeNm);
 
   // Only aircraft in range can be selected; drop the selection when it leaves.
   const selectable = (hex: string | null) =>
@@ -68,6 +71,7 @@ export function DisplayPage() {
     theme: themeName,
     onSelectTheme: setThemeName,
     rangeNm,
+    nextRangeNm,
     onCycleRange: cycleRange,
     status,
     feed: info?.feed,

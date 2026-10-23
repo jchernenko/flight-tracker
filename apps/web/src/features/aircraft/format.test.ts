@@ -28,7 +28,14 @@ const ac = (over: Partial<Aircraft>) =>
     ...over,
   }) as Aircraft;
 
-const route = { origin: 'YYC', destination: 'YVR', originCity: 'Calgary', destinationCity: null };
+const route = {
+  origin: 'YYC',
+  destination: 'YVR',
+  originCity: 'Calgary',
+  destinationCity: null,
+  originPos: null,
+  destinationPos: null,
+};
 
 describe('format', () => {
   it('writes altitudes with a thousands separator', () => {

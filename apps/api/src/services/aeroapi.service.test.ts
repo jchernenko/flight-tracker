@@ -52,6 +52,8 @@ describe('AeroAPI fallback', () => {
       destination: 'CYPK',
       originCity: 'Calgary',
       destinationCity: 'Pitt Meadows',
+      originPos: { lat: 51.119, lon: -114.01 },
+      destinationPos: { lat: 49.215, lon: -122.709 },
     });
     const [url, init] = fetchFn.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(

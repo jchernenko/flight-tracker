@@ -1,4 +1,16 @@
-import type { AircraftKind } from '@flight/shared';
+import { readFileSync } from 'node:fs';
+import type { AircraftKind, LatLon } from '@flight/shared';
+
+// IATA and ICAO airport code -> [lat, lon], from OurAirports (see scripts/build-airports.mjs).
+const AIRPORT_POSITIONS: Record<string, [number, number]> = JSON.parse(
+  readFileSync(new URL('../data/airports.json', import.meta.url), 'utf8'),
+);
+
+/** Position of an airport by IATA ("YVR") or ICAO ("CYVR") code, for route lines. */
+export function airportPos(code: string): LatLon | null {
+  const pos = AIRPORT_POSITIONS[code];
+  return pos ? { lat: pos[0], lon: pos[1] } : null;
+}
 
 // ICAO codes of scheduled and cargo airlines as flown in ADS-B callsigns
 // (e.g. "ACA191"), not IATA ticketing codes (e.g. "AC191"). Covers carriers

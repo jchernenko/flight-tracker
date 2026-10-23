@@ -15,7 +15,8 @@ const envSchema = z.object({
   HOME_LON: requiredNumber(-180, 180),
   /** Shown in the display's header, e.g. "Maple Ridge". */
   HOME_NAME: z.string().trim().min(1).default('Home'),
-  FETCH_RADIUS_NM: z.coerce.number().positive().max(250).default(60),
+  // The map's widest range. Fetching it once costs adsb.lol no more requests than 60 nm.
+  FETCH_RADIUS_NM: z.coerce.number().positive().max(250).default(250),
   FEED_PROVIDER: z.enum(['adsblol', 'airplaneslive', 'readsb', 'demo']).default('adsblol'),
   FEED_URL: z.url().optional(),
   // airplanes.live and adsb.lol ask for at most ~1 request/second.
