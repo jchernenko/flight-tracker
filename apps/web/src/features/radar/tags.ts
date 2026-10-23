@@ -4,8 +4,18 @@ export type TagLine = { text: string; kind: 'ident' | 'altitude' | 'note' };
 
 const thousands = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
+/** Climbing or descending faster than this shows an arrow. */
+const VS_THRESHOLD_FPM = 300;
+
+/** ↑ climbing, ↓ descending, nothing when level. */
+export function trendArrow(a: Aircraft): '↑' | '↓' | '' {
+  const vs = a.verticalRateFpm ?? 0;
+  return vs >= VS_THRESHOLD_FPM ? '↑' : vs <= -VS_THRESHOLD_FPM ? '↓' : '';
+}
+
 /**
- * Scope data tag: the callsign, then the altitude ("13,300 ft"). Emergencies
+ * Scope data tag: the callsign, then the altitude with a climb or descent
+ * arrow ("13,300 ft ↑"). Emergencies
  * show the squawk instead of the altitude; military traffic gets a note.
  */
 export function tagLines(a: Aircraft): TagLine[] {
@@ -14,7 +24,7 @@ export function tagLines(a: Aircraft): TagLine[] {
     ? 'GND'
     : a.altitudeFt === null
       ? '—'
-      : `${thousands.format(a.altitudeFt)} ft`;
+      : `${thousands.format(a.altitudeFt)} ft${trendArrow(a) && ` ${trendArrow(a)}`}`;
   const lines: TagLine[] = [
     { text: ident, kind: 'ident' },
     { text: isEmergency(a) ? `${a.squawk} · EMERGENCY` : altitude, kind: 'altitude' },

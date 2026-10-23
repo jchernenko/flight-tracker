@@ -20,13 +20,15 @@ describe('tagLines', () => {
   const texts = (a: Aircraft) => tagLines(a).map((l) => l.text);
 
   it('shows the callsign and the altitude with a thousands separator', () => {
-    expect(texts(base)).toEqual(['ACA123', '35,000 ft']);
+    expect(texts({ ...base, verticalRateFpm: 0 })).toEqual(['ACA123', '35,000 ft']);
+    expect(texts(base)[1]).toBe('35,000 ft ↑');
+    expect(texts({ ...base, verticalRateFpm: -800 })[1]).toBe('35,000 ft ↓');
     expect(texts({ ...base, onGround: true, altitudeFt: null })[1]).toBe('GND');
   });
 
   it('shows the squawk for emergencies and a note for military traffic', () => {
     expect(texts({ ...base, squawk: '7700' })).toEqual(['ACA123', '7700 · EMERGENCY']);
-    expect(texts({ ...base, military: true })).toEqual(['ACA123', '35,000 ft', 'MILITARY']);
+    expect(texts({ ...base, military: true })).toEqual(['ACA123', '35,000 ft ↑', 'MILITARY']);
   });
 
   it('falls back to registration, then hex', () => {

@@ -1,7 +1,6 @@
 import { distanceNm, type Aircraft, type LatLon } from '@flight/shared';
 import { isEmergency } from '../radar/tags';
 
-const VS_THRESHOLD_FPM = 300;
 const thousands = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 export const ident = (a: Aircraft): string =>
@@ -39,10 +38,7 @@ export function operatorLine(a: Aircraft): string {
   return a.registration ?? a.typeName ?? '';
 }
 
-export function trendArrow(a: Aircraft): '↑' | '↓' | '' {
-  const vs = a.verticalRateFpm ?? 0;
-  return vs >= VS_THRESHOLD_FPM ? '↑' : vs <= -VS_THRESHOLD_FPM ? '↓' : '';
-}
+export { trendArrow } from '../radar/tags';
 
 /** Vertical speed in fpm with a sign: "+1,200", "−800", "0". */
 export function verticalSpeedText(a: Aircraft): string {
