@@ -37,6 +37,7 @@ describe('normalizeReadsb', () => {
       typeName: 'Airbus A321',
       registration: 'C-GJWO',
       military: false,
+      kind: 'airline',
       route: null,
       seenAt: '2026-10-15T11:59:58.000Z',
     });
@@ -49,6 +50,20 @@ describe('normalizeReadsb', () => {
     });
     expect(a).toMatchObject({ onGround: true, altitudeFt: null, military: true, callsign: null });
     expect(a?.seenAt).toBe('2026-10-15T12:00:00.000Z');
+  });
+
+  it('sorts traffic into airline, charter, private and helicopter', () => {
+    const kinds = normalizeReadsb({
+      now: NOW_MS / 1000,
+      aircraft: [
+        { hex: 'a1', lat: 1, lon: 2, flight: 'WJA310  ' },
+        { hex: 'a2', lat: 1, lon: 2, flight: 'LXJ396' },
+        { hex: 'a3', lat: 1, lon: 2, flight: 'CGKLM' },
+        { hex: 'a4', lat: 1, lon: 2 },
+        { hex: 'a5', lat: 1, lon: 2, flight: 'CGHLI', category: 'A7' },
+      ],
+    }).map((a) => a.kind);
+    expect(kinds).toEqual(['airline', 'charter', 'private', 'private', 'helicopter']);
   });
 
   it('drops entries without a position or with a malformed shape', () => {

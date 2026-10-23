@@ -13,10 +13,13 @@ export function altitudeText(a: Aircraft): string {
   return a.altitudeFt === null ? '—' : thousands.format(a.altitudeFt);
 }
 
-/** Origin and destination codes ("YYC→YVR"), else "MIL" or "VFR". */
+/** Airline and charter flights fly plans we may just not know; private and helicopter traffic is usually VFR. */
+const flightPlanned = (a: Aircraft) => a.kind === 'airline' || a.kind === 'charter';
+
+/** Origin and destination codes ("YYC→YVR"), else "MIL", "VFR" or "—" for an unknown route. */
 export function routeCode(a: Aircraft, separator = '→'): string {
   if (a.route) return `${a.route.origin}${separator}${a.route.destination}`;
-  return a.military ? 'MIL' : 'VFR';
+  return a.military ? 'MIL' : flightPlanned(a) ? '—' : 'VFR';
 }
 
 /** "Calgary → Vancouver", falling back to codes, or a plain-language note when there's no route. */
@@ -25,7 +28,8 @@ export function routeCities(a: Aircraft): string {
     const { origin, destination, originCity, destinationCity } = a.route;
     return `${originCity ?? origin} → ${destinationCity ?? destination}`;
   }
-  return a.military ? 'Route not published' : 'Local VFR flight';
+  if (a.military) return 'Route not published';
+  return flightPlanned(a) ? 'Route unknown' : 'Local VFR flight';
 }
 
 /** "Air Canada 1418", or whatever identifies the operator best. */

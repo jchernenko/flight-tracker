@@ -1,5 +1,8 @@
-// ICAO airline codes as flown in ADS-B callsigns (e.g. "ACA191"), not IATA
-// ticketing codes (e.g. "AC191"). Covers common carriers over the BC coast.
+import type { AircraftKind } from '@flight/shared';
+
+// ICAO codes of scheduled and cargo airlines as flown in ADS-B callsigns
+// (e.g. "ACA191"), not IATA ticketing codes (e.g. "AC191"). Covers carriers
+// seen over the BC coast. Any other operator code counts as a charter.
 // prettier-ignore
 const ICAO_AIRLINES: Record<string, string> = {
   ACA: 'Air Canada', ROU: 'Air Canada Rouge', WJA: 'WestJet', WSW: 'WestJet Encore',
@@ -10,6 +13,16 @@ const ICAO_AIRLINES: Record<string, string> = {
   FLE: 'Flair Airlines', CFG: 'Condor', ANA: 'All Nippon Airways', CPA: 'Cathay Pacific',
   KAL: 'Korean Air', EVA: 'EVA Air', QFA: 'Qantas', BAW: 'British Airways', DLH: 'Lufthansa',
   AFR: 'Air France', KLM: 'KLM',
+  WEN: 'WestJet Encore', TSC: 'Air Transat', POE: 'Porter Airlines', HES: 'Harbour Air',
+  JBU: 'JetBlue', NKS: 'Spirit Airlines', FFT: 'Frontier Airlines', AAY: 'Allegiant Air',
+  SCX: 'Sun Country', HAL: 'Hawaiian Airlines', ENY: 'Envoy Air', RPA: 'Republic Airways',
+  GTI: 'Atlas Air', ABX: 'ABX Air', ATN: 'Air Transport International', CKS: 'Kalitta Air',
+  PAC: 'Polar Air Cargo', JAL: 'Japan Airlines', AAR: 'Asiana Airlines', CAL: 'China Airlines',
+  CES: 'China Eastern', CSN: 'China Southern', CCA: 'Air China',
+  PAL: 'Philippine Airlines', SIA: 'Singapore Airlines', ANZ: 'Air New Zealand', FJI: 'Fiji Airways',
+  VIR: 'Virgin Atlantic', ICE: 'Icelandair', EDW: 'Edelweiss', SWR: 'Swiss', THY: 'Turkish Airlines',
+  UAE: 'Emirates', QTR: 'Qatar Airways', ETD: 'Etihad', AMX: 'Aeroméxico', VIV: 'Viva Aerobus',
+  VOI: 'Volaris', CMP: 'Copa Airlines', AVA: 'Avianca', HKE: 'HK Express',
 };
 
 // Fallback ICAO type designator -> name, used only when the feed doesn't
@@ -43,6 +56,13 @@ export function parseCallsign(callsign: string | null): {
 /** True for callsigns shaped like an airline flight ("ACA191"), not a registration. */
 export function isAirlineCallsign(callsign: string | null): callsign is string {
   return callsign !== null && AIRLINE_CALLSIGN_RE.test(callsign);
+}
+
+/** Airline, charter or private, from the callsign; helicopters from the feed's category ("A7"). */
+export function aircraftKind(callsign: string | null, category?: string | null): AircraftKind {
+  if (category === 'A7') return 'helicopter';
+  if (!isAirlineCallsign(callsign)) return 'private';
+  return callsign.slice(0, 3) in ICAO_AIRLINES ? 'airline' : 'charter';
 }
 
 export function typeName(typeCode: string | null, desc: string | null): string | null {

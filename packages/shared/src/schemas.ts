@@ -9,6 +9,8 @@ export const routeSchema = z.object({
   destinationCity: z.string().nullable(),
 });
 
+export const aircraftKindSchema = z.enum(['airline', 'charter', 'private', 'helicopter']);
+
 export const aircraftSchema = z.object({
   /** ICAO 24-bit address, lowercase hex. A leading `~` marks a non-ICAO (TIS-B) id. */
   hex: z.string(),
@@ -29,6 +31,12 @@ export const aircraftSchema = z.object({
   airline: z.string().nullable(),
   flightNumber: z.string().nullable(),
   military: z.boolean(),
+  /**
+   * Who flies it, guessed from the callsign: an airline flight number from a
+   * scheduled or cargo carrier, another operator's code (charter, bizjet), or
+   * a registration (private, GA). Helicopters come from the feed's category.
+   */
+  kind: aircraftKindSchema,
   route: routeSchema.nullable(),
   /** ISO time the position was last updated. */
   seenAt: z.string(),
@@ -56,4 +64,5 @@ export const healthSchema = z.object({
 export type Route = z.infer<typeof routeSchema>;
 export type Health = z.infer<typeof healthSchema>;
 export type Aircraft = z.infer<typeof aircraftSchema>;
+export type AircraftKind = z.infer<typeof aircraftKindSchema>;
 export type AircraftResponse = z.infer<typeof aircraftResponseSchema>;

@@ -3,7 +3,7 @@ import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { STALE_AFTER_MS } from '../aircraft/status';
 import { alertRgb, altitudeRgb, type Theme } from '../../lib/theme';
 import { deadReckon, offsetNm, positionAgeSec, ringStepNm, type Offset } from './geometry';
-import { isEmergency, placeTag, tagLines, type Rect, type TagLine } from './tags';
+import { isEmergency, isMinor, placeTag, tagLines, type Rect, type TagLine } from './tags';
 import { BORDER, LANDMARKS } from './landmarks';
 import { trackHistory, trailPath } from './trails';
 
@@ -20,6 +20,7 @@ const TAG_GAP = 10;
 const GLOW_RADIUS = 16;
 const HIT_RADIUS = 22;
 const PULSE_MS = 1400;
+const MINOR_TAG_ALPHA = 0.7;
 const ACQUIRING_ARC_RAD = 0.7;
 const ACQUIRING_SEC_PER_RAD = 0.9;
 /** Turning the scope redraws the rings and landmarks, so ignore wobbles smaller than this. */
@@ -471,6 +472,23 @@ export class RadarRenderer {
         ctx.lineTo(x - 6, y);
         ctx.closePath();
         ctx.stroke();
+      } else if (track.aircraft.kind === 'helicopter' && !emergency) {
+        // Helicopters: a small cross.
+        ctx.strokeStyle = `rgb(${rgb})`;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x - 5, y);
+        ctx.lineTo(x + 5, y);
+        ctx.moveTo(x, y - 5);
+        ctx.lineTo(x, y + 5);
+        ctx.stroke();
+      } else if (isMinor(track.aircraft) && !emergency) {
+        // Charter and private traffic: a hollow ring, like a VFR symbol on a real scope.
+        ctx.strokeStyle = `rgb(${rgb})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 4, 0, Math.PI * 2);
+        ctx.stroke();
       } else {
         const sprite = this.glow(rgb);
         ctx.drawImage(sprite, x - GLOW_RADIUS, y - GLOW_RADIUS, GLOW_RADIUS * 2, GLOW_RADIUS * 2);
@@ -502,6 +520,8 @@ export class RadarRenderer {
       const h = lines.length * TAG_LINE_H;
       const tag = placeTag(x, y, track.tagW, h, TAG_GAP, placed, force);
       if (!tag) continue;
+      // Non-airline tags sit a step back, so the airliners read first.
+      ctx.globalAlpha = !force && isMinor(track.aircraft) ? MINOR_TAG_ALPHA : 1;
       lines.forEach((line, i) => {
         ctx.font = FONTS[line.kind];
         ctx.fillStyle = emergency
@@ -514,6 +534,7 @@ export class RadarRenderer {
         ctx.fillText(line.text, tag.x, tag.y + i * TAG_LINE_H + 1);
       });
     }
+    ctx.globalAlpha = 1;
 
     if (stale) {
       ctx.globalAlpha = 0.55;

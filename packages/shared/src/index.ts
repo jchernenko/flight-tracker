@@ -1,6 +1,6 @@
 // Runtime-free entry: types, constants and helpers only, so the web bundle
 // doesn't pull in Zod. Import schemas from '@flight/shared/schemas'.
-export type { Route, Aircraft, AircraftResponse, Health } from './schemas.js';
+export type { Route, Aircraft, AircraftKind, AircraftResponse, Health } from './schemas.js';
 
 export type ApiSuccess<T> = { success: true; data: T };
 export type ApiFailure = { success: false; error: string };

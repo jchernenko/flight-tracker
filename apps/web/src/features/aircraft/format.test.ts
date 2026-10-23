@@ -23,6 +23,7 @@ const ac = (over: Partial<Aircraft>) =>
     trackDeg: 7,
     squawk: '2341',
     military: false,
+    kind: 'airline',
     route: null,
     ...over,
   }) as Aircraft;
@@ -38,7 +39,11 @@ describe('format', () => {
   it('describes the route, or why there is none', () => {
     expect(routeCode(ac({ route }))).toBe('YYC→YVR');
     expect(routeCities(ac({ route }))).toBe('Calgary → YVR');
-    expect([routeCode(ac({})), routeCities(ac({}))]).toEqual(['VFR', 'Local VFR flight']);
+    expect([routeCode(ac({})), routeCities(ac({}))]).toEqual(['—', 'Route unknown']);
+    const cessna = ac({ callsign: 'CGKLM', kind: 'private' });
+    expect([routeCode(cessna), routeCities(cessna)]).toEqual(['VFR', 'Local VFR flight']);
+    const bizjet = ac({ callsign: 'LXJ396', kind: 'charter' });
+    expect([routeCode(bizjet), routeCities(bizjet)]).toEqual(['—', 'Route unknown']);
     expect([routeCode(ac({ military: true })), routeCities(ac({ military: true }))]).toEqual([
       'MIL',
       'Route not published',

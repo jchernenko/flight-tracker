@@ -4,7 +4,7 @@ import type { ThemeName } from '../../lib/theme';
 import type { Status } from '../aircraft/status';
 import { Controls, type View } from '../../components/Controls';
 import { Headline } from '../../components/Headline';
-import { aircraftColor, MilChip, NothingOverhead } from '../list/AircraftList';
+import { aircraftColor, KindChip, NothingOverhead } from '../list/AircraftList';
 import { isEmergency } from '../radar/tags';
 import {
   altitudeText,
@@ -117,7 +117,7 @@ function BoardCard({ a }: { a: Aircraft }) {
           <span className={`text-[18px] font-semibold ${emergency ? 'text-alert' : ''}`}>
             {ident(a)}
           </span>
-          {a.military && <MilChip />}
+          <KindChip a={a} />
         </span>
         <span className="min-w-0 truncate text-[12px] text-muted">
           {emergency ? `SQUAWK ${a.squawk}` : operatorLine(a)}

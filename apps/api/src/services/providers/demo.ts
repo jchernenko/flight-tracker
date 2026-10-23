@@ -1,6 +1,6 @@
 import type { Aircraft } from '@flight/shared';
 import type { FeedProvider } from './types.js';
-import { airportCity, parseCallsign, typeName } from '../../utils/lookups.js';
+import { aircraftKind, airportCity, parseCallsign, typeName } from '../../utils/lookups.js';
 
 type DemoTrack = {
   hex: string;
@@ -16,6 +16,7 @@ type DemoTrack = {
   squawk: string;
   route?: [origin: string, destination: string];
   military?: boolean;
+  category?: string;
 };
 
 // prettier-ignore
@@ -26,6 +27,8 @@ const TRACKS: DemoTrack[] = [
   { hex: 'c0a003', callsign: 'CGKLM', type: 'C172', orbitNm: 4, phaseDeg: 300, clockwise: false, altitudeFt: 1800, speedKt: 95, verticalRateFpm: 0, squawk: '1200' },
   { hex: 'a1b2c3', callsign: 'ASA12', type: 'B739', orbitNm: 45, phaseDeg: 260, clockwise: true, altitudeFt: 38000, speedKt: 480, verticalRateFpm: 0, squawk: '3317', route: ['SEA', 'ANC'] },
   { hex: 'c0a004', callsign: 'PCO301', type: 'BE20', orbitNm: 18, phaseDeg: 340, clockwise: false, altitudeFt: 9000, speedKt: 240, verticalRateFpm: 800, squawk: '6041', route: ['YVR', 'YCD'] },
+  { hex: 'a4c1e2', callsign: 'LXJ396', type: 'CL35', orbitNm: 26, phaseDeg: 150, clockwise: false, altitudeFt: 24000, speedKt: 410, verticalRateFpm: -1800, squawk: '3651' },
+  { hex: 'c0a005', callsign: 'CGHLI', type: 'AS50', orbitNm: 6, phaseDeg: 20, clockwise: true, altitudeFt: 1200, speedKt: 110, verticalRateFpm: 0, squawk: '1200', category: 'A7' },
   { hex: 'c2b0f1', callsign: 'CFC4011', type: 'C130', orbitNm: 12, phaseDeg: 60, clockwise: true, altitudeFt: 16000, speedKt: 260, verticalRateFpm: 0, squawk: '4000', military: true },
 ];
 
@@ -64,6 +67,7 @@ export function createDemoProvider(now: () => number = Date.now): FeedProvider {
           registration: null,
           ...parseCallsign(track.callsign),
           military: track.military ?? false,
+          kind: aircraftKind(track.callsign, track.category),
           route: track.route
             ? {
                 origin: track.route[0],

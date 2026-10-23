@@ -13,6 +13,7 @@ const base = {
   route: null,
   squawk: '2341',
   military: false,
+  kind: 'airline',
 } as Aircraft;
 
 describe('tagLines', () => {

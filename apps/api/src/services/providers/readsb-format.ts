@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Aircraft } from '@flight/shared';
-import { parseCallsign, typeName } from '../../utils/lookups.js';
+import { aircraftKind, parseCallsign, typeName } from '../../utils/lookups.js';
 
 // The readsb / tar1090 aircraft JSON format, shared by adsb.lol, airplanes.live
 // and a home receiver's aircraft.json. Only the fields we use are listed.
@@ -20,6 +20,7 @@ const rawAircraftSchema = z.object({
   desc: z.string().optional(),
   r: z.string().optional(),
   dbFlags: z.number().optional(),
+  category: z.string().optional(),
   seen_pos: z.number().optional(),
   seen: z.number().optional(),
 });
@@ -69,6 +70,7 @@ export function normalizeReadsb(payload: ReadsbPayload, fallbackNowMs = Date.now
       registration: ac.r ?? null,
       ...parseCallsign(callsign),
       military: ((ac.dbFlags ?? 0) & 1) === 1,
+      kind: aircraftKind(callsign, ac.category),
       route: null,
       seenAt: new Date(nowMs - ageSeconds * 1000).toISOString(),
     });

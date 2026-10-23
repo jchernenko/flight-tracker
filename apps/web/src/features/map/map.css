@@ -125,6 +125,41 @@ html[data-theme='light'] .ac-label {
   box-shadow: 0 0 0 6px var(--color-sel-ring);
 }
 
+/* Charter and private: a hollow ring in the altitude colour. */
+.ac-ring .ac-dot {
+  left: 17px;
+  top: 17px;
+  width: 10px;
+  height: 10px;
+  background: transparent;
+  border: 1.5px solid var(--c);
+  box-shadow: none;
+}
+.ac-ring.ac-selected .ac-dot {
+  box-shadow: 0 0 0 6px var(--color-sel-ring);
+}
+
+/* Helicopters: a small cross. */
+.ac-heli .ac-dot {
+  left: 17px;
+  top: 17px;
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  background:
+    linear-gradient(var(--c), var(--c)) center / 100% 2px no-repeat,
+    linear-gradient(var(--c), var(--c)) center / 2px 100% no-repeat;
+  box-shadow: none;
+}
+.ac-heli.ac-selected .ac-dot {
+  box-shadow: 0 0 0 6px var(--color-sel-ring);
+}
+
+/* Non-airline labels sit a step back, so the airliners read first. */
+.ac-minor:not(.ac-selected) .ac-label {
+  opacity: 0.7;
+}
+
 /* Emergency: alert dot and an expanding ring. */
 .ac-alert .ac-dot {
   background: var(--color-alert);

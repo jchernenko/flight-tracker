@@ -1,6 +1,6 @@
 import type { Aircraft, LatLon, RangeNm } from '@flight/shared';
 import { altitudeVar } from '../../lib/theme';
-import { isEmergency } from '../radar/tags';
+import { isEmergency, isMinor } from '../radar/tags';
 import { nextRange } from '../../components/Headline';
 import {
   altitudeText,
@@ -19,13 +19,24 @@ import {
 export const aircraftColor = (a: Aircraft): string =>
   isEmergency(a) ? 'var(--color-alert)' : altitudeVar(a.onGround ? 0 : a.altitudeFt);
 
-export function MilChip() {
+const KIND_CHIPS = { charter: 'CHARTER', private: 'PRIVATE', helicopter: 'HELI' } as const;
+
+/** MIL, CHARTER, PRIVATE or HELI; nothing for airline flights. */
+export function KindChip({ a }: { a: Aircraft }) {
+  const label = a.military ? 'MIL' : a.kind === 'airline' ? null : KIND_CHIPS[a.kind];
+  if (!label) return null;
   return (
     <span className="rounded-[4px] border border-dim px-1.5 py-0.5 font-mono text-[10px] leading-none font-medium tracking-[.08em] text-text2">
-      MIL
+      {label}
     </span>
   );
 }
+
+/** Filled for airliners, hollow for charter, private and helicopters, as on the scope. */
+export const dotStyle = (a: Aircraft, color: string) =>
+  isMinor(a) && !isEmergency(a)
+    ? { boxShadow: `inset 0 0 0 1.5px ${color}` }
+    : { background: color };
 
 type ListProps = {
   /** In range and already sorted: emergencies first, then highest first. */
@@ -63,11 +74,11 @@ function Row({ a, onClick }: { a: Aircraft; onClick: () => void }) {
       onClick={onClick}
       className="grid h-14 w-full grid-cols-[10px_1fr_auto] items-center gap-3 border-b border-line2 px-1 text-left"
     >
-      <span className="size-2 rounded-full" style={{ background: color }} />
+      <span className="size-2 rounded-full" style={dotStyle(a, color)} />
       <span className="min-w-0">
         <span className="flex items-center gap-2">
           <span className="text-[15px] leading-5 font-semibold">{ident(a)}</span>
-          {a.military && <MilChip />}
+          <KindChip a={a} />
         </span>
         <span className="block truncate text-[13px] leading-[18px] text-muted">
           {routeCities(a)}
@@ -129,10 +140,14 @@ function SelectedCard({ a, home, onClick }: { a: Aircraft; home: LatLon; onClick
         <div className="flex min-w-0 items-center gap-3">
           <span
             className="size-2.5 shrink-0 rounded-full"
-            style={{ background: color, boxShadow: '0 0 0 4px var(--color-line)' }}
+            style={
+              isMinor(a) && !isEmergency(a)
+                ? { boxShadow: `inset 0 0 0 1.5px ${color}, 0 0 0 4px var(--color-line)` }
+                : { background: color, boxShadow: '0 0 0 4px var(--color-line)' }
+            }
           />
           <span className="truncate text-[20px] font-semibold">{ident(a)}</span>
-          {a.military && <MilChip />}
+          <KindChip a={a} />
         </div>
         <span className="truncate text-[13px] text-muted">{operatorLine(a)}</span>
       </div>

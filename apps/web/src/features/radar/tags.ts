@@ -27,6 +27,11 @@ export function isEmergency(a: Aircraft): boolean {
   return a.squawk !== null && (EMERGENCY_SQUAWKS as readonly string[]).includes(a.squawk);
 }
 
+/** Charter, private and helicopter traffic: drawn hollow, with quieter tags. Military has its own symbol. */
+export function isMinor(a: Aircraft): boolean {
+  return !a.military && a.kind !== 'airline';
+}
+
 export type Rect = { x: number; y: number; w: number; h: number };
 
 const overlaps = (a: Rect, b: Rect) =>

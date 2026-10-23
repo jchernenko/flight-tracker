@@ -7,7 +7,7 @@ import type { AircraftSnapshot } from '../aircraft/useAircraft';
 import { STALE_AFTER_MS } from '../aircraft/status';
 import { alertRgb, altitudeHue, altitudeRgb, type Theme } from '../../lib/theme';
 import { deadReckon, positionAgeSec, toLatLon } from '../radar/geometry';
-import { isEmergency, overlapsAny, tagLines, type Rect } from '../radar/tags';
+import { isEmergency, isMinor, overlapsAny, tagLines, type Rect } from '../radar/tags';
 import { splitPath, trackHistory, trailPath } from '../radar/trails';
 import type { HeadingStore } from '../follow/useFollowMe';
 
@@ -45,6 +45,9 @@ function iconFor(a: Aircraft, selected: boolean): L.DivIcon {
   const classes = ['ac'];
   if (isEmergency(a)) classes.push('ac-alert');
   else if (a.military) classes.push('ac-mil');
+  else if (a.kind === 'helicopter') classes.push('ac-heli');
+  else if (isMinor(a)) classes.push('ac-ring');
+  if (isMinor(a) && !isEmergency(a)) classes.push('ac-minor');
   if (selected) classes.push('ac-selected');
   const hue = altitudeHue(a.onGround ? 0 : a.altitudeFt).toFixed(1);
   const lines = tagLines(a)
